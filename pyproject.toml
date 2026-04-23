@@ -1,0 +1,37 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openenv-prompt_golf_env"
+version = "0.1.0"
+description = "Prompt Golf — agents learn to write the shortest prompt that makes a frozen target LLM solve a task. OpenEnv-compliant environment."
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core[core]>=0.2.2",
+    # Target-model runtime. Kept optional via env var PROMPT_GOLF_TARGET_BACKEND=mock
+    # so the env can boot on CPU-only hosts.
+    "transformers>=4.44.0",
+    "torch>=2.2.0",
+    "accelerate>=0.33.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+server = "prompt_golf_env.server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["prompt_golf_env", "prompt_golf_env.server"]
+package-dir = { "prompt_golf_env" = ".", "prompt_golf_env.server" = "server" }

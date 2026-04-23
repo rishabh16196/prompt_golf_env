@@ -1,0 +1,6 @@
+openenv[core]>=0.2.0
+fastapi>=0.115.0
+uvicorn>=0.24.0
+transformers>=4.44.0
+torch>=2.2.0
+accelerate>=0.33.0
