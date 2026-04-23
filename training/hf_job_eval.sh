@@ -52,7 +52,7 @@ EOF
     --detach \
     --secrets HF_TOKEN \
     "${IMAGE}" \
-    bash -lc "${CMD}"
+    -- bash -c "${CMD}"
 }
 
 case "${MODE}" in

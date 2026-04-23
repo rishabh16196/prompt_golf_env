@@ -73,4 +73,4 @@ hf jobs run \
   --env HF_HUB_ENABLE_HF_TRANSFER=1 \
   --env TRANSFORMERS_VERBOSITY=warning \
   "${IMAGE}" \
-  bash -lc "${JOB_CMD}"
+  -- bash -c "${JOB_CMD}"
