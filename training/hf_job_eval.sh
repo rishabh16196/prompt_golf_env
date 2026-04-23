@@ -49,7 +49,8 @@ EOF
   hf jobs run \
     --flavor "${FLAVOR}" \
     --timeout "${TIMEOUT}" \
-    --secret HF_TOKEN \
+    --detach \
+    --secrets HF_TOKEN \
     "${IMAGE}" \
     bash -lc "${CMD}"
 }

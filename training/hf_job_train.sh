@@ -59,7 +59,7 @@ python -u training/train_grpo.py \
   --beta ${BETA} \
   --seeds-per-task ${SEEDS_PER_TASK} \
   --output-dir /app/outputs/grpo \
-  --push-to-hub ${PUSH_TO_HUB}
+  ${PUSH_TO_HUB:+--push-to-hub ${PUSH_TO_HUB}}
 echo "[hf-jobs] training complete. Rendering plots..."
 python -u training/make_plots.py --metrics /app/outputs/grpo/train_metrics.jsonl --out-dir /app/outputs/grpo/plots
 echo "[hf-jobs] done."
@@ -68,7 +68,8 @@ EOF
 hf jobs run \
   --flavor "${FLAVOR}" \
   --timeout "${TIMEOUT}" \
-  --secret HF_TOKEN \
+  --detach \
+  --secrets HF_TOKEN \
   --env HF_HUB_ENABLE_HF_TRANSFER=1 \
   --env TRANSFORMERS_VERBOSITY=warning \
   "${IMAGE}" \
