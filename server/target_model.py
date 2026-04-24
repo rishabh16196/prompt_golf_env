@@ -173,6 +173,10 @@ class HFTargetBackend:
         self._tok = AutoTokenizer.from_pretrained(self.model_id)
         if self._tok.pad_token is None:
             self._tok.pad_token = self._tok.eos_token
+        # Decoder-only generation requires left-padding so batched inputs of
+        # varying length all end at the same position before the generation
+        # continues. Right-padding silently corrupts outputs on shorter inputs.
+        self._tok.padding_side = "left"
 
         dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
         self._model = AutoModelForCausalLM.from_pretrained(
