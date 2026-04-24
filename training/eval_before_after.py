@@ -58,6 +58,7 @@ def load_agent(agent_model: str, adapter: str | None):
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     tok = AutoTokenizer.from_pretrained(agent_model)
+    tok.padding_side = "left"  # decoder-only generation
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
