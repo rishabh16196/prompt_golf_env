@@ -51,6 +51,8 @@ def parse_args() -> argparse.Namespace:
                    help="Label to tag this eval run (e.g. 'base', 'trained').")
     p.add_argument("--max-new-tokens", type=int, default=256)
     p.add_argument("--temperature", type=float, default=0.0)
+    p.add_argument("--push-to-hub", default=None,
+                   help="HF model repo id to upload the eval JSONL under evals/eval_<label>.jsonl.")
     return p.parse_args()
 
 
@@ -196,6 +198,20 @@ def main() -> None:
         f'{"AVERAGE":24s}  {total_reward/n:7.3f}  {"":>5s}  '
         f'{total_tokens/n:6.1f}'
     )
+
+    # --- Push JSONL to the hub so the results persist past container death
+    if args.push_to_hub:
+        from huggingface_hub import HfApi
+        api = HfApi()
+        api.create_repo(args.push_to_hub, exist_ok=True, repo_type="model")
+        api.upload_file(
+            path_or_fileobj=str(out_path),
+            path_in_repo=f"evals/eval_{args.label}.jsonl",
+            repo_id=args.push_to_hub,
+            repo_type="model",
+            commit_message=f"eval_{args.label}: {len(rows)} episodes",
+        )
+        print(f"[push] uploaded evals/eval_{args.label}.jsonl to https://huggingface.co/{args.push_to_hub}", flush=True)
 
 
 if __name__ == "__main__":

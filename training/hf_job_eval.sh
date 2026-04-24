@@ -53,6 +53,7 @@ python -u training/eval_before_after.py \
   --seeds-per-task ${SEEDS_PER_TASK} \
   --label ${LABEL} \
   --output-json /app/outputs/eval_${LABEL}.jsonl \
+  --push-to-hub ${ADAPTER_REPO} \
   ${EXTRA_FLAGS}
 EOF
 
