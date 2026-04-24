@@ -32,7 +32,7 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK:-4}"
 
 FLAVOR="${FLAVOR:-a10g-large}"        # t4-medium | l4x1 | a10g-large | a100-large
 TIMEOUT="${TIMEOUT:-3h}"
-IMAGE="${IMAGE:-pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime}"
+IMAGE="${IMAGE:-pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime}"
 
 echo "[hf-jobs] repo=$REPO_URL@$REPO_REF"
 echo "[hf-jobs] agent=$AGENT_MODEL target=$TARGET_MODEL"

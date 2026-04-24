@@ -82,7 +82,7 @@ Under the hood this calls:
 
 ```
 hf jobs run --flavor a10g-large --timeout 3h --secret HF_TOKEN \
-  pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime \
+  pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime \
   bash -lc "<clone + install + train>"
 ```
 
