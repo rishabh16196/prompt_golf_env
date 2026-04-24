@@ -256,6 +256,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-completion-length", type=int, default=256)
     p.add_argument("--max-prompt-length", type=int, default=1024)
 
+    # Rollout sampling — explicit so we don't silently inherit Qwen3's
+    # baked-in generation_config (temperature=0.6, top_p=0.95), which
+    # is too conservative for GRPO exploration.
+    p.add_argument("--rollout-temperature", type=float, default=0.9)
+    p.add_argument("--rollout-top-p", type=float, default=1.0)
+
     # LoRA
     p.add_argument("--lora-r", type=int, default=16)
     p.add_argument("--lora-alpha", type=int, default=32)
@@ -324,6 +330,12 @@ def main() -> None:
     MetricsCallback = make_callback(log_state, output_dir)
 
     # ----- GRPO config -----
+    # NOTE on temperature / top_p: Qwen3 ships a generation_config with
+    # temperature=0.6, top_p=0.95. Without explicit overrides TRL picks
+    # those up and our 10 candidate prompts per group come out too
+    # similar -> low advantage variance -> slow GRPO learning. Setting
+    # temperature=0.9 and top_p=1.0 gives the agent room to explore
+    # diverse prompts per task, which is what GRPO needs.
     grpo_cfg = GRPOConfig(
         output_dir=str(output_dir),
         max_steps=args.max_steps,
@@ -334,6 +346,8 @@ def main() -> None:
         beta=args.beta,
         max_completion_length=args.max_completion_length,
         max_prompt_length=args.max_prompt_length,
+        temperature=args.rollout_temperature,
+        top_p=args.rollout_top_p,
         bf16=args.bf16 and torch.cuda.is_available(),
         logging_steps=args.log_interval,
         save_steps=max(50, args.max_steps // 4),
