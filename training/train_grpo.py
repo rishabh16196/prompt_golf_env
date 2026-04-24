@@ -379,18 +379,59 @@ def main() -> None:
     tokenizer.save_pretrained(str(adapter_dir))
     print(f"[save] adapter at {adapter_dir}", flush=True)
 
-    # ----- Push to hub -----
+    # ----- Render plots inline so they land in output_dir/plots/ -----
+    metrics_path = output_dir / "train_metrics.jsonl"
+    plots_dir = output_dir / "plots"
+    if metrics_path.exists():
+        try:
+            import subprocess
+            subprocess.run(
+                ["python", "-u", "training/make_plots.py",
+                 "--metrics", str(metrics_path),
+                 "--out-dir", str(plots_dir)],
+                check=False,
+            )
+            print(f"[plots] rendered to {plots_dir}", flush=True)
+        except Exception as e:
+            print(f"[plots] render failed: {e}", flush=True)
+
+    # ----- Push adapter + metrics + plots + config to hub -----
     if args.push_to_hub:
         from huggingface_hub import HfApi
         api = HfApi()
         api.create_repo(args.push_to_hub, exist_ok=True, repo_type="model")
+
+        # 1. Adapter files at repo root (so PeftModel.from_pretrained(repo_id) works)
         api.upload_folder(
             folder_path=str(adapter_dir),
             repo_id=args.push_to_hub,
             repo_type="model",
             commit_message=f"GRPO adapter, steps={args.max_steps}",
         )
-        print(f"[push] uploaded to https://huggingface.co/{args.push_to_hub}", flush=True)
+
+        # 2. Training artifacts (metrics, config) at root
+        for fname in ("train_metrics.jsonl", "config.json"):
+            src = output_dir / fname
+            if src.exists():
+                api.upload_file(
+                    path_or_fileobj=str(src),
+                    path_in_repo=fname,
+                    repo_id=args.push_to_hub,
+                    repo_type="model",
+                    commit_message=f"upload {fname}",
+                )
+
+        # 3. Plots under plots/
+        if plots_dir.exists():
+            api.upload_folder(
+                folder_path=str(plots_dir),
+                repo_id=args.push_to_hub,
+                path_in_repo="plots",
+                repo_type="model",
+                commit_message="training plots",
+            )
+
+        print(f"[push] uploaded adapter + artifacts to https://huggingface.co/{args.push_to_hub}", flush=True)
 
 
 if __name__ == "__main__":
