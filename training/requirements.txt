@@ -1,15 +1,15 @@
-# Core training deps for Prompt Golf GRPO on HF Jobs.
-# Pinned loosely — compatible with HF Jobs PyTorch images as of Apr 2026.
+# Training deps — mirrors spaces_pipeline_env/colab/train_spaces_pipeline.ipynb
+# torch is installed separately in hf_job_train.sh with the cu124 index URL,
+# so it is intentionally NOT listed here.
 
-torch>=2.4.0
 transformers>=4.46.0
-accelerate>=1.0.0
+accelerate>=0.34.0
 peft>=0.13.0
 trl>=0.14.0
 datasets>=3.0.0
 bitsandbytes>=0.43.0; platform_system != "Darwin"
-sentencepiece>=0.2.0
 safetensors>=0.4.0
 huggingface_hub>=0.26.0
+sentencepiece>=0.2.0
 matplotlib>=3.8.0
 numpy>=1.24

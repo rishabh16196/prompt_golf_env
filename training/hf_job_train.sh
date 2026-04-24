@@ -44,9 +44,12 @@ read -r -d '' JOB_CMD <<EOF || true
 set -euo pipefail
 apt-get update -qq && apt-get install -y --no-install-recommends git curl
 pip install -q --upgrade pip
+# --- Spaces-pipeline Colab stack (exact versions we've already verified work) ---
+pip install -q --upgrade torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu124
+# ---------------------------------------------------------------------------------
 git clone --depth 1 --branch ${REPO_REF} ${REPO_URL} /app
 cd /app
-pip install -q -e .
+pip install -q --no-deps -e .
 pip install -q -r training/requirements.txt
 python -u training/train_grpo.py \
   --agent-model ${AGENT_MODEL} \
