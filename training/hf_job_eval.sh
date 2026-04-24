@@ -44,7 +44,8 @@ uv pip install --system --upgrade --no-deps -q \\
 git clone --depth 1 --branch ${REPO_REF} ${REPO_URL} /app
 cd /app
 pip install -q --no-deps -e .
-pip install -q 'peft>=0.13.0' 'datasets>=3.0.0' 'accelerate>=0.34.0' \\
+pip install -q 'openenv-core[core]>=0.2.2' \\
+               'peft>=0.13.0' 'datasets>=3.0.0' 'accelerate>=0.34.0' \\
                'huggingface_hub>=0.26.0' 'safetensors>=0.4.0' matplotlib
 python -u training/eval_before_after.py \
   --agent-model ${AGENT_MODEL} \

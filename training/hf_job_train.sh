@@ -69,7 +69,9 @@ pip install -q --no-deps -e .
 
 # Remaining light deps (peft/datasets/accelerate/etc are not in the
 # OpenEnv-official list but are needed by train_grpo.py).
-pip install -q 'peft>=0.13.0' 'datasets>=3.0.0' 'accelerate>=0.34.0' \\
+# openenv-core is our env's runtime — pin >=0.2.2 to match pyproject.
+pip install -q 'openenv-core[core]>=0.2.2' \\
+               'peft>=0.13.0' 'datasets>=3.0.0' 'accelerate>=0.34.0' \\
                'huggingface_hub>=0.26.0' 'safetensors>=0.4.0' matplotlib
 
 # Verify (prints to logs for debugging)
