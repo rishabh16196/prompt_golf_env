@@ -276,8 +276,8 @@ def parse_args() -> argparse.Namespace:
 
     # GRPO knobs
     p.add_argument("--max-steps", type=int, default=500)
-    p.add_argument("--num-generations", type=int, default=10,
-                   help="Bumped from 8 -> 10 for richer group-relative advantages.")
+    p.add_argument("--num-generations", type=int, default=8,
+                   help="Must divide per_device_batch_size * grad_accum_steps (default 2*4=8).")
     p.add_argument("--per-device-batch-size", type=int, default=2)
     p.add_argument("--gradient-accumulation-steps", type=int, default=4)
     p.add_argument("--learning-rate", type=float, default=5e-6)
