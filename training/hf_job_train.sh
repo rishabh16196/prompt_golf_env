@@ -91,8 +91,6 @@ python -u training/train_grpo.py \\
   --seeds-per-task ${SEEDS_PER_TASK} \
   --output-dir /app/outputs/grpo \
   ${PUSH_TO_HUB:+--push-to-hub ${PUSH_TO_HUB}}
-echo "[hf-jobs] training complete. Rendering plots..."
-python -u training/make_plots.py --metrics /app/outputs/grpo/train_metrics.jsonl --out-dir /app/outputs/grpo/plots
 echo "[hf-jobs] done."
 EOF
 
