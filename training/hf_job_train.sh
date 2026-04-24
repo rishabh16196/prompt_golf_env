@@ -32,7 +32,7 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK:-4}"
 
 FLAVOR="${FLAVOR:-l40sx1}"            # t4-medium | l4x1 | a10g-large | l40sx1 | a100-large
 TIMEOUT="${TIMEOUT:-3h}"
-IMAGE="${IMAGE:-pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime}"
+IMAGE="${IMAGE:-python:3.12-slim}"
 
 echo "[hf-jobs] repo=$REPO_URL@$REPO_REF"
 echo "[hf-jobs] agent=$AGENT_MODEL target=$TARGET_MODEL"
@@ -42,10 +42,12 @@ echo "[hf-jobs] push_to_hub=$PUSH_TO_HUB"
 # Single-line bash command the job will execute.
 read -r -d '' JOB_CMD <<EOF || true
 set -euo pipefail
-apt-get update -qq && apt-get install -y --no-install-recommends git curl
+apt-get update -qq && apt-get install -y --no-install-recommends git curl build-essential
 pip install -q --upgrade pip
-# --- Spaces-pipeline Colab stack (exact versions we've already verified work) ---
-pip install -q --upgrade torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu124
+# --- Stack: torch 2.7 (has FSDPModule) + TRL + HF ecosystem from cu124 wheels ---
+# Torch 2.7 cu124 bundles CUDA/cuDNN runtime libs, so python:3.12-slim base is fine
+# as long as the HF Jobs hardware has an NVIDIA driver (which l40sx1 does).
+pip install -q torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu124
 # ---------------------------------------------------------------------------------
 git clone --depth 1 --branch ${REPO_REF} ${REPO_URL} /app
 cd /app

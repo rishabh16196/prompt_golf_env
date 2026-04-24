@@ -22,7 +22,7 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK:-3}"
 
 FLAVOR="${FLAVOR:-l40sx1}"
 TIMEOUT="${TIMEOUT:-1h}"
-IMAGE="${IMAGE:-pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime}"
+IMAGE="${IMAGE:-python:3.12-slim}"
 
 run_eval() {
   local LABEL=$1
@@ -31,11 +31,12 @@ run_eval() {
   local CMD
   read -r -d '' CMD <<EOF || true
 set -euo pipefail
-apt-get update -qq && apt-get install -y --no-install-recommends git
+apt-get update -qq && apt-get install -y --no-install-recommends git curl build-essential
 pip install -q --upgrade pip
+pip install -q torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu124
 git clone --depth 1 --branch ${REPO_REF} ${REPO_URL} /app
 cd /app
-pip install -q -e .
+pip install -q --no-deps -e .
 pip install -q -r training/requirements.txt
 python -u training/eval_before_after.py \
   --agent-model ${AGENT_MODEL} \
