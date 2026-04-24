@@ -47,6 +47,7 @@ try:
     from .scorer import score_one
     from .target_model import TargetBackend, TargetGeneration, get_target_backend
     from .tasks import TASKS, TaskSpec, get_task, list_task_ids
+    from .tasks_v2 import TASKS_V2
 except ImportError:
     from models import (
         DEFAULT_PROMPT_BUDGET,
@@ -60,6 +61,10 @@ except ImportError:
     from server.scorer import score_one
     from server.target_model import TargetBackend, TargetGeneration, get_target_backend
     from server.tasks import TASKS, TaskSpec, get_task, list_task_ids
+    from server.tasks_v2 import TASKS_V2
+
+# Merged v1 + v2 task bank. v2 task_ids don't clash with v1 by construction.
+_ALL_TASKS = {**TASKS, **TASKS_V2}
 
 
 # Baseline zero-shot scores are (target_id, task_id) -> score. Computed on
@@ -228,13 +233,12 @@ class PromptGolfEnvironment(Environment):
 
     def _choose_task(self, task: Optional[str]) -> TaskSpec:
         if task is None or task == "random":
-            task_id = self._rng.choice(list_task_ids())
-        elif task in TASKS:
+            task_id = self._rng.choice(list(_ALL_TASKS.keys()))
+        elif task in _ALL_TASKS:
             task_id = task
         else:
-            # Defensive fallback: unknown task_id becomes the first task.
-            task_id = list_task_ids()[0]
-        return get_task(task_id)
+            task_id = next(iter(_ALL_TASKS.keys()))
+        return _ALL_TASKS[task_id]
 
     def _score_prompt(
         self, prompt: str, return_samples: bool = False
@@ -255,7 +259,12 @@ class PromptGolfEnvironment(Environment):
 
         per_item = []
         for gen, expected in zip(generations, test_expected):
-            per_item.append(score_one(self._task.scorer, gen.output_text, expected))
+            per_item.append(score_one(
+                self._task.scorer,
+                gen.output_text,
+                expected,
+                task_description=self._task.description,
+            ))
         mean_score = sum(per_item) / max(1, len(per_item))
 
         if return_samples:

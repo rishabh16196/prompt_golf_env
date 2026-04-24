@@ -19,11 +19,12 @@ REPO_URL="${REPO_URL:-https://huggingface.co/spaces/rishabh16196/prompt_golf_env
 REPO_REF="${REPO_REF:-main}"
 PUSH_TO_HUB="${PUSH_TO_HUB:-rishabh16196/prompt-golf-grpo-1.5b}"
 
-AGENT_MODEL="${AGENT_MODEL:-Qwen/Qwen2.5-1.5B-Instruct}"
-TARGET_MODEL="${TARGET_MODEL:-Qwen/Qwen2.5-0.5B-Instruct}"
+AGENT_MODEL="${AGENT_MODEL:-Qwen/Qwen3.5-2B}"
+TARGET_MODEL="${TARGET_MODEL:-Qwen/Qwen3.5-2B}"
+JUDGE_MODEL="${JUDGE_MODEL:-Qwen/Qwen3.5-9B}"
 
 MAX_STEPS="${MAX_STEPS:-500}"
-NUM_GENS="${NUM_GENS:-8}"
+NUM_GENS="${NUM_GENS:-10}"
 BATCH_SIZE="${BATCH_SIZE:-2}"
 GRAD_ACCUM="${GRAD_ACCUM:-4}"
 LR="${LR:-5e-6}"
@@ -31,7 +32,7 @@ BETA="${BETA:-0.04}"
 SEEDS_PER_TASK="${SEEDS_PER_TASK:-4}"
 
 FLAVOR="${FLAVOR:-l40sx1}"            # t4-medium | l4x1 | a10g-large | l40sx1 | a100-large
-TIMEOUT="${TIMEOUT:-3h}"
+TIMEOUT="${TIMEOUT:-4h}"              # bumped 3h -> 4h to cover judge-inference overhead
 IMAGE="${IMAGE:-pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime}"
 
 echo "[hf-jobs] repo=$REPO_URL@$REPO_REF"

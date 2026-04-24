@@ -130,13 +130,32 @@ class RubricResult:
 class PromptGolfRubric:
     """Pure-python rubric for Prompt Golf.
 
-    Not a TrajectoryRubric subclass — the env is single-step so there is no
-    trajectory to accumulate. Instead the env calls `grade()` once per step
-    and stores the detailed result on the observation for visibility.
+    ADDITIVE formulation (v2):
+        reward = success_score
+               - LAMBDA_LEN * tokens
+               - LAMBDA_LEAK * leakage_overlap
+
+    where success_score = raw_task_score - BASELINE_SUBTRACT * baseline.
+
+    Tuning rationale:
+      - LAMBDA_LEN = 0.005 → with baseline tokens ~50 and raw_score ~0.25,
+        the untrained baseline reward sits near 0.0 (0.25 - 0.25*0.5 - 0.005*50 = 0.0),
+        giving smooth gradients in both directions.
+      - LAMBDA_LEAK = 1.0 → a fully-leaked prompt (all 4-grams present)
+        loses the whole raw_score contribution.
+      - BASELINE_SUBTRACT = 0.5 → partially normalize against the target's
+        zero-shot ability, so easy-for-target tasks don't saturate reward.
+
+    Old fields kept on RubricResult (length_factor / leakage_penalty) for
+    backward-compat logging; they're now derived rather than multiplicative.
     """
 
-    BASELINE_BONUS_WEIGHT: float = 0.3
-    LENGTH_DECAY_K: int = 20
+    LAMBDA_LEN: float = 0.005
+    LAMBDA_LEAK: float = 1.0
+    BASELINE_SUBTRACT: float = 0.5
+
+    # Keep old clip boundaries so downstream plots don't break
+    REWARD_CLIP_LOW: float = -0.25
     REWARD_CLIP_HIGH: float = 1.3
 
     def grade(
@@ -149,23 +168,29 @@ class PromptGolfRubric:
         prompt_text: str,
         held_out_inputs: List[str],
     ) -> RubricResult:
-        lf = length_factor(submitted_tokens, prompt_budget, decay_k=self.LENGTH_DECAY_K)
-        lp = leakage_penalty(prompt_text, held_out_inputs)
+        overlap = ngram_overlap(prompt_text, held_out_inputs, n=4)
+        # Quadratic leak penalty so small accidental overlap ≈ free,
+        # systematic copying hammers.
+        leak_cost = self.LAMBDA_LEAK * (overlap ** 2)
 
+        length_cost = self.LAMBDA_LEN * float(max(0, submitted_tokens))
+        success = raw_task_score - self.BASELINE_SUBTRACT * baseline_zero_shot_score
         gain = raw_task_score - baseline_zero_shot_score
-        base = raw_task_score * lf * lp
-        bonus = max(0.0, gain) * lf * self.BASELINE_BONUS_WEIGHT
 
-        reward = base + bonus
-        reward = float(max(0.0, min(self.REWARD_CLIP_HIGH, reward)))
+        reward = success - length_cost - leak_cost
+        reward = float(max(self.REWARD_CLIP_LOW, min(self.REWARD_CLIP_HIGH, reward)))
+
+        # Derived legacy fields (for log continuity with v1 metrics jsonl)
+        lf_legacy = length_factor(submitted_tokens, prompt_budget)
+        lp_legacy = 1.0 - overlap * overlap   # 1.0 == clean, 0.0 == leaked
 
         return RubricResult(
             reward=reward,
             raw_task_score=float(raw_task_score),
-            length_factor=float(lf),
-            leakage_penalty=float(lp),
+            length_factor=float(lf_legacy),
+            leakage_penalty=float(lp_legacy),
             gain_over_baseline=float(gain),
-            baseline_bonus_component=float(bonus),
+            baseline_bonus_component=float(length_cost),  # repurposed: log length_cost
             submitted_tokens=int(submitted_tokens),
             prompt_budget=int(prompt_budget),
         )

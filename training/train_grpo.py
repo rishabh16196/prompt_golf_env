@@ -229,14 +229,17 @@ def make_callback(log_state: Dict, output_dir: Path):
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="GRPO training for Prompt Golf")
-    p.add_argument("--agent-model", default="Qwen/Qwen2.5-1.5B-Instruct")
-    p.add_argument("--target-model", default="Qwen/Qwen2.5-0.5B-Instruct")
+    p.add_argument("--agent-model", default="Qwen/Qwen3.5-2B")
+    p.add_argument("--target-model", default="Qwen/Qwen3.5-2B")
     p.add_argument("--output-dir", default="outputs/grpo")
 
-    # Task split
+    # Task split — held out spans v1 AND v2 for honest generalization eval
     p.add_argument(
         "--held-out-tasks",
-        default="translate_numbers,reason_order,style_concise,refuse_unsafe",
+        default=(
+            "translate_numbers,reason_order,style_concise,refuse_unsafe,"
+            "yaml_nested_3levels,socrates_question,sarcasm_vs_literal"
+        ),
         help="Comma-separated task ids excluded from training (used for eval).",
     )
     p.add_argument("--seeds-per-task", type=int, default=4,
@@ -244,7 +247,8 @@ def parse_args() -> argparse.Namespace:
 
     # GRPO knobs
     p.add_argument("--max-steps", type=int, default=500)
-    p.add_argument("--num-generations", type=int, default=8)
+    p.add_argument("--num-generations", type=int, default=10,
+                   help="Bumped from 8 -> 10 for richer group-relative advantages.")
     p.add_argument("--per-device-batch-size", type=int, default=2)
     p.add_argument("--gradient-accumulation-steps", type=int, default=4)
     p.add_argument("--learning-rate", type=float, default=5e-6)
