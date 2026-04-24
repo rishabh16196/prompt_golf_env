@@ -276,48 +276,30 @@ def main() -> None:
     os.environ.setdefault("PROMPT_GOLF_TARGET_MODEL", args.target_model)
     os.environ.setdefault("PROMPT_GOLF_TARGET_BACKEND", "hf")
 
-    # ----- Unsloth MUST be imported before transformers/trl so its
-    # monkey-patches (fused kernels, gradient checkpointing, generation
-    # optimizations) take effect on the model classes. -----
-    import unsloth  # noqa: F401
-    from unsloth import FastLanguageModel
-
-    # Heavy imports — after unsloth patches.
+    # Heavy imports.
     import torch
-    from transformers import set_seed
+    from peft import LoraConfig
+    from transformers import AutoTokenizer, set_seed
     from trl import GRPOConfig, GRPOTrainer
 
     from prompt_golf_env.server.prompt_golf_environment import PromptGolfEnvironment
     from prompt_golf_env.server.tasks import list_task_ids
 
+    # NOTE: we deliberately do NOT import Unsloth here. Unsloth patches
+    # Qwen2Attention at import time, which breaks the target model
+    # (also Qwen2) that we load via vanilla transformers inside the env.
+    # See target_model.py — target uses AutoModelForCausalLM. Co-hosting
+    # agent (would-be Unsloth) + target (vanilla) in one process requires
+    # Unsloth to be absent. The proven-working path is plain TRL + PEFT
+    # LoRA; on L40S a 500-step 1.5B run finishes in ~140 min.
+
     set_seed(args.seed)
 
-    # ----- agent (trainable) via Unsloth -----
-    max_seq = args.max_prompt_length + args.max_completion_length
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=args.agent_model,
-        max_seq_length=max_seq,
-        load_in_4bit=False,
-        dtype=None,  # auto (bf16 on Ampere+, fp16 otherwise)
-    )
-    # Left-pad for decoder-only generation (fixes the TRL warning and
-    # ensures correct token alignment during rollout).
-    tokenizer.padding_side = "left"
+    # ----- tokenizer (agent) -----
+    tokenizer = AutoTokenizer.from_pretrained(args.agent_model)
+    tokenizer.padding_side = "left"  # decoder-only generation
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-
-    # Wrap with LoRA via Unsloth's helper (fused kernels).
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
-        lora_dropout=args.lora_dropout,
-        bias="none",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                         "gate_proj", "up_proj", "down_proj"],
-        use_gradient_checkpointing="unsloth",
-        random_state=args.seed,
-    )
 
     # ----- env (target loaded lazily on first forward pass) -----
     env = PromptGolfEnvironment()
@@ -356,16 +338,26 @@ def main() -> None:
         remove_unused_columns=False,  # keep task_id / seed in batch
     )
 
+    # ----- LoRA -----
+    peft_cfg = LoraConfig(
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        bias="none",
+        task_type="CAUSAL_LM",
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                         "gate_proj", "up_proj", "down_proj"],
+    )
+
     # ----- Train -----
-    # NOTE: we pass the Unsloth-wrapped model directly; NO peft_config
-    # (LoRA already applied above via FastLanguageModel.get_peft_model).
     trainer = GRPOTrainer(
-        model=model,
+        model=args.agent_model,
         processing_class=tokenizer,
         args=grpo_cfg,
         reward_funcs=[reward_fn],
         train_dataset=train_ds,
         eval_dataset=eval_ds,
+        peft_config=peft_cfg,
         callbacks=[MetricsCallback()],
     )
 
