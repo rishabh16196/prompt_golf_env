@@ -7,7 +7,7 @@
 """
 LLM Judge backend for Prompt Golf.
 
-Loads a larger frozen model (default: Qwen/Qwen3.5-9B) once at server startup
+Loads a larger frozen model (default: Qwen/Qwen3-8B) once at server startup
 and uses it to score generated outputs on criteria that can't be captured
 by structural/regex scorers — persona fidelity, reasoning quality, tone,
 etc.
@@ -17,7 +17,7 @@ alongside the target (2B bf16 ~4 GB) and the agent stack (~10 GB) on a
 single L40S. CPU fallback also provided for smoke tests.
 
 Select via env var PROMPT_GOLF_JUDGE_BACKEND=mock|hf (default "hf").
-Select the model via PROMPT_GOLF_JUDGE_MODEL=Qwen/Qwen3.5-9B (default).
+Select the model via PROMPT_GOLF_JUDGE_MODEL=Qwen/Qwen3-8B (default).
 Disable quantization via PROMPT_GOLF_JUDGE_NO_QUANT=1.
 """
 
@@ -28,7 +28,7 @@ import re
 from typing import Optional, Protocol
 
 
-DEFAULT_JUDGE_MODEL = "Qwen/Qwen3.5-9B"
+DEFAULT_JUDGE_MODEL = "Qwen/Qwen3-8B"
 
 # Judge prompt template. The judge must output a single float in [0, 1]
 # on the first line; any further explanation is ignored.

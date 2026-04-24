@@ -229,8 +229,8 @@ def make_callback(log_state: Dict, output_dir: Path):
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="GRPO training for Prompt Golf")
-    p.add_argument("--agent-model", default="Qwen/Qwen3.5-2B")
-    p.add_argument("--target-model", default="Qwen/Qwen3.5-2B")
+    p.add_argument("--agent-model", default="Qwen/Qwen3-1.7B")
+    p.add_argument("--target-model", default="Qwen/Qwen3-1.7B")
     p.add_argument("--output-dir", default="outputs/grpo")
 
     # Task split — held out spans v1 AND v2 for honest generalization eval

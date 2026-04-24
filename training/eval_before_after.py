@@ -39,10 +39,10 @@ from training.train_grpo import (  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Prompt Golf eval harness")
-    p.add_argument("--agent-model", default="Qwen/Qwen3.5-2B")
+    p.add_argument("--agent-model", default="Qwen/Qwen3-1.7B")
     p.add_argument("--adapter", default=None,
                    help="Optional LoRA adapter dir or HF repo id.")
-    p.add_argument("--target-model", default="Qwen/Qwen3.5-2B")
+    p.add_argument("--target-model", default="Qwen/Qwen3-1.7B")
     p.add_argument("--tasks", default="all",
                    help="'all' or comma-separated task ids.")
     p.add_argument("--seeds-per-task", type=int, default=3)

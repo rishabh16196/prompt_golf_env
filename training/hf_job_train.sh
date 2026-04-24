@@ -19,9 +19,13 @@ REPO_URL="${REPO_URL:-https://huggingface.co/spaces/rishabh16196/prompt_golf_env
 REPO_REF="${REPO_REF:-main}"
 PUSH_TO_HUB="${PUSH_TO_HUB:-rishabh16196/prompt-golf-grpo-1.5b}"
 
-AGENT_MODEL="${AGENT_MODEL:-Qwen/Qwen3.5-2B}"
-TARGET_MODEL="${TARGET_MODEL:-Qwen/Qwen3.5-2B}"
-JUDGE_MODEL="${JUDGE_MODEL:-Qwen/Qwen3.5-9B}"
+# Qwen3 family (supported by transformers==4.56.2 from OpenEnv recipe).
+# Qwen3.5 / Qwen3.5-9B need transformers>=4.60 which pulls vllm as a
+# hard dep via TRL's newer import path; installing vllm on top of the
+# current image is flaky. Revisit for v3.
+AGENT_MODEL="${AGENT_MODEL:-Qwen/Qwen3-1.7B}"
+TARGET_MODEL="${TARGET_MODEL:-Qwen/Qwen3-1.7B}"
+JUDGE_MODEL="${JUDGE_MODEL:-Qwen/Qwen3-8B}"
 
 MAX_STEPS="${MAX_STEPS:-500}"
 NUM_GENS="${NUM_GENS:-10}"
@@ -55,15 +59,13 @@ pip install --upgrade -q uv
 # Upgrade torch 2.4 -> 2.8+, install Unsloth from git with [base] extras.
 uv pip install --system -q \\
     "torch>=2.8.0" "torchvision>=0.25.0" "triton>=3.4.0" bitsandbytes \\
-    "transformers>=4.60.0" \\
+    "transformers==4.56.2" \\
     "unsloth_zoo[base] @ git+https://github.com/unslothai/unsloth-zoo" \\
     "unsloth[base] @ git+https://github.com/unslothai/unsloth"
 
-# --no-deps second pass to pin trl + keep unsloth current.
-# Leaving transformers unpinned here (already satisfied >=4.60 above) so
-# Qwen3.5 architecture (merged post-4.56.2) is recognized.
+# --no-deps second pass to pin specific versions (including trl==0.22.2)
 uv pip install --system --upgrade --no-deps -q \\
-    tokenizers "trl==0.22.2" unsloth unsloth_zoo
+    "transformers==4.56.2" tokenizers "trl==0.22.2" unsloth unsloth_zoo
 
 # Clone our env and install (no-deps; we've pinned the heavy stuff above)
 git clone --depth 1 --branch ${REPO_REF} ${REPO_URL} /app
