@@ -20,7 +20,7 @@ AGENT_MODEL="${AGENT_MODEL:-Qwen/Qwen2.5-1.5B-Instruct}"
 TARGET_MODEL="${TARGET_MODEL:-Qwen/Qwen2.5-0.5B-Instruct}"
 SEEDS_PER_TASK="${SEEDS_PER_TASK:-3}"
 
-FLAVOR="${FLAVOR:-a10g-large}"
+FLAVOR="${FLAVOR:-l40sx1}"
 TIMEOUT="${TIMEOUT:-1h}"
 IMAGE="${IMAGE:-pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime}"
 

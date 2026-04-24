@@ -30,7 +30,7 @@ LR="${LR:-5e-6}"
 BETA="${BETA:-0.04}"
 SEEDS_PER_TASK="${SEEDS_PER_TASK:-4}"
 
-FLAVOR="${FLAVOR:-a10g-large}"        # t4-medium | l4x1 | a10g-large | a100-large
+FLAVOR="${FLAVOR:-l40sx1}"            # t4-medium | l4x1 | a10g-large | l40sx1 | a100-large
 TIMEOUT="${TIMEOUT:-3h}"
 IMAGE="${IMAGE:-pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime}"
 
