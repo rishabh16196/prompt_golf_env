@@ -55,13 +55,15 @@ pip install --upgrade -q uv
 # Upgrade torch 2.4 -> 2.8+, install Unsloth from git with [base] extras.
 uv pip install --system -q \\
     "torch>=2.8.0" "torchvision>=0.25.0" "triton>=3.4.0" bitsandbytes \\
-    "transformers==4.56.2" \\
+    "transformers>=4.60.0" \\
     "unsloth_zoo[base] @ git+https://github.com/unslothai/unsloth-zoo" \\
     "unsloth[base] @ git+https://github.com/unslothai/unsloth"
 
-# --no-deps second pass to pin specific versions (including trl==0.22.2)
+# --no-deps second pass to pin trl + keep unsloth current.
+# Leaving transformers unpinned here (already satisfied >=4.60 above) so
+# Qwen3.5 architecture (merged post-4.56.2) is recognized.
 uv pip install --system --upgrade --no-deps -q \\
-    "transformers==4.56.2" tokenizers "trl==0.22.2" unsloth unsloth_zoo
+    tokenizers "trl==0.22.2" unsloth unsloth_zoo
 
 # Clone our env and install (no-deps; we've pinned the heavy stuff above)
 git clone --depth 1 --branch ${REPO_REF} ${REPO_URL} /app
