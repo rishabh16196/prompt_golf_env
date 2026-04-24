@@ -32,7 +32,7 @@ SEEDS_PER_TASK="${SEEDS_PER_TASK:-4}"
 
 FLAVOR="${FLAVOR:-l40sx1}"            # t4-medium | l4x1 | a10g-large | l40sx1 | a100-large
 TIMEOUT="${TIMEOUT:-3h}"
-IMAGE="${IMAGE:-python:3.12-slim}"
+IMAGE="${IMAGE:-pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime}"
 
 echo "[hf-jobs] repo=$REPO_URL@$REPO_REF"
 echo "[hf-jobs] agent=$AGENT_MODEL target=$TARGET_MODEL"
@@ -42,18 +42,42 @@ echo "[hf-jobs] push_to_hub=$PUSH_TO_HUB"
 # Single-line bash command the job will execute.
 read -r -d '' JOB_CMD <<EOF || true
 set -euo pipefail
-apt-get update -qq && apt-get install -y --no-install-recommends git curl build-essential
-pip install -q --upgrade pip
-# --- Stack: torch 2.7 (has FSDPModule) + TRL + HF ecosystem from cu124 wheels ---
-# Torch 2.7 cu124 bundles CUDA/cuDNN runtime libs, so python:3.12-slim base is fine
-# as long as the HF Jobs hardware has an NVIDIA driver (which l40sx1 does).
-pip install -q torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu124
-# ---------------------------------------------------------------------------------
+
+# --- OpenEnv-official install pattern (verbatim from unsloth_2048.ipynb) ---
+# Triton JIT needs gcc
+apt-get update -qq
+apt-get install -y -qq git curl build-essential
+
+# uv for deterministic resolution
+pip install --upgrade -q uv
+
+# Upgrade torch 2.4 -> 2.8+, install Unsloth from git with [base] extras.
+uv pip install --system -q \\
+    "torch>=2.8.0" "torchvision>=0.25.0" "triton>=3.4.0" bitsandbytes \\
+    "transformers==4.56.2" \\
+    "unsloth_zoo[base] @ git+https://github.com/unslothai/unsloth-zoo" \\
+    "unsloth[base] @ git+https://github.com/unslothai/unsloth"
+
+# --no-deps second pass to pin specific versions (including trl==0.22.2)
+uv pip install --system --upgrade --no-deps -q \\
+    "transformers==4.56.2" tokenizers "trl==0.22.2" unsloth unsloth_zoo
+
+# Clone our env and install (no-deps; we've pinned the heavy stuff above)
 git clone --depth 1 --branch ${REPO_REF} ${REPO_URL} /app
 cd /app
 pip install -q --no-deps -e .
-pip install -q -r training/requirements.txt
-python -u training/train_grpo.py \
+
+# Remaining light deps (peft/datasets/accelerate/etc are not in the
+# OpenEnv-official list but are needed by train_grpo.py).
+pip install -q 'peft>=0.13.0' 'datasets>=3.0.0' 'accelerate>=0.34.0' \\
+               'huggingface_hub>=0.26.0' 'safetensors>=0.4.0' matplotlib
+
+# Verify (prints to logs for debugging)
+python -c "import torch; print('torch:', torch.__version__, '| cuda:', torch.cuda.is_available())"
+python -c "import trl; print('trl:', trl.__version__)"
+# -------------------------------------------------------------------------------
+
+python -u training/train_grpo.py \\
   --agent-model ${AGENT_MODEL} \
   --target-model ${TARGET_MODEL} \
   --max-steps ${MAX_STEPS} \
