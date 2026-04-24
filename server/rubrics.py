@@ -150,12 +150,14 @@ class PromptGolfRubric:
     backward-compat logging; they're now derived rather than multiplicative.
     """
 
-    LAMBDA_LEN: float = 0.005
+    LAMBDA_LEN: float = 0.002            # softer than v2.0 (was 0.005)
     LAMBDA_LEAK: float = 1.0
     BASELINE_SUBTRACT: float = 0.5
+    MIN_TOKENS_FLOOR: int = 5            # prompts below this get a flat penalty
+    MIN_TOKENS_PENALTY: float = 0.25     # ← large enough to overcome length_cost savings
 
     # Keep old clip boundaries so downstream plots don't break
-    REWARD_CLIP_LOW: float = -0.25
+    REWARD_CLIP_LOW: float = -0.5
     REWARD_CLIP_HIGH: float = 1.3
 
     def grade(
@@ -173,7 +175,20 @@ class PromptGolfRubric:
         # systematic copying hammers.
         leak_cost = self.LAMBDA_LEAK * (overlap ** 2)
 
-        length_cost = self.LAMBDA_LEN * float(max(0, submitted_tokens))
+        # Length cost: linear for reasonable-length prompts; hard floor
+        # below MIN_TOKENS_FLOOR to prevent degenerate policy collapse
+        # to 1-token outputs on tasks where the target can't be steered.
+        tokens = max(0, submitted_tokens)
+        length_cost = self.LAMBDA_LEN * float(tokens)
+        if tokens < self.MIN_TOKENS_FLOOR:
+            # Flat penalty shrinks linearly from MIN_TOKENS_PENALTY at 0 tokens
+            # to 0 at MIN_TOKENS_FLOOR tokens. Guarantees a >1-token prompt
+            # beats a 1-token prompt at equal raw_score.
+            short_penalty = self.MIN_TOKENS_PENALTY * (
+                1.0 - tokens / max(1, self.MIN_TOKENS_FLOOR)
+            )
+            length_cost += short_penalty
+
         success = raw_task_score - self.BASELINE_SUBTRACT * baseline_zero_shot_score
         gain = raw_task_score - baseline_zero_shot_score
 

@@ -88,7 +88,15 @@ def build_chat_string(tok, obs) -> str:
         {"role": "user", "content": build_agent_user_message(obs)},
     ]
     if getattr(tok, "chat_template", None):
-        return tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        try:
+            return tok.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+                enable_thinking=False,
+            )
+        except TypeError:
+            return tok.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+            )
     return f"{SYSTEM_PROMPT}\n\n{build_agent_user_message(obs)}\n\nAssistant:"
 
 

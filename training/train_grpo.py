@@ -89,15 +89,28 @@ def build_agent_user_message(obs) -> str:
 
 
 def build_chat_prompt(tokenizer, obs) -> str:
-    """Apply chat template → single string the agent's tokenizer will see."""
+    """Apply chat template → single string the agent's tokenizer will see.
+
+    Passes enable_thinking=False for Qwen3 models so the agent emits its
+    prompt directly instead of a <think>...</think> reasoning trace
+    followed by output. Thinking-mode output would also blow past our
+    max_completion_length budget.
+    """
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": build_agent_user_message(obs)},
     ]
     if getattr(tokenizer, "chat_template", None):
-        return tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
+        try:
+            # Qwen3 / Qwen3.5 support this kwarg; other models ignore it.
+            return tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+                enable_thinking=False,
+            )
+        except TypeError:
+            return tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+            )
     return f"{SYSTEM_PROMPT}\n\n{build_agent_user_message(obs)}\n\nAssistant:"
 
 
@@ -119,13 +132,29 @@ def build_prompt_dataset(env, tokenizer, task_ids: List[str], seeds_per_task: in
     return Dataset.from_list(rows)
 
 
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
 def extract_prompt(text: str) -> str:
-    m = PROMPT_TAG_RE.search(text or "")
+    """Pull the <prompt>...</prompt> body from the agent's completion.
+
+    Robust to Qwen3-style <think>...</think> reasoning blocks that may
+    slip through even with enable_thinking=False by stripping those
+    blocks first. Falls back to the first non-empty non-'<think>' line,
+    then to a canned instruction if the completion is unusable.
+    """
+    text = text or ""
+    # Strip any thinking blocks first so the content after them is what we inspect.
+    stripped = _THINK_BLOCK_RE.sub("", text).strip()
+    m = PROMPT_TAG_RE.search(stripped)
     if m and m.group(1).strip():
         return m.group(1).strip()
-    # Fallback: first non-empty line.
-    first = (text or "").strip().split("\n", 1)[0].strip()
-    return first or "Follow the instruction. Output only the answer."
+    # Fallback: first non-empty line that isn't a stray think tag.
+    for line in stripped.split("\n"):
+        line = line.strip()
+        if line and not line.lower().startswith(("<think>", "</think>")):
+            return line
+    return "Follow the instruction. Output only the answer."
 
 
 # ---------------------------------------------------------------------------

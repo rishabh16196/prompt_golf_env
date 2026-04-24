@@ -171,15 +171,23 @@ class HFJudgeBackend:
             expected_block=expected_block,
         )
 
-        # Prefer chat template if present (Qwen3 has one).
+        # Prefer chat template if present (Qwen3 has one). Disable thinking
+        # so the judge emits the score directly on line 1 instead of a
+        # <think>...</think> block before the score.
         if getattr(self._tok, "chat_template", None):
             messages = [
                 {"role": "system", "content": "You grade outputs numerically. Output only the score."},
                 {"role": "user", "content": user_msg},
             ]
-            prompt_text = self._tok.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
+            try:
+                prompt_text = self._tok.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True,
+                    enable_thinking=False,
+                )
+            except TypeError:
+                prompt_text = self._tok.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True,
+                )
         else:
             prompt_text = user_msg
 
