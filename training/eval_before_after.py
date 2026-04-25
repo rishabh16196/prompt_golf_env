@@ -45,7 +45,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--target-model", default="Qwen/Qwen3-1.7B")
     p.add_argument("--tasks", default="all",
                    help="'all' or comma-separated task ids.")
-    p.add_argument("--seeds-per-task", type=int, default=3)
+    p.add_argument("--seeds-per-task", type=int, default=1,
+                   help="At temperature=0.0 the agent is deterministic and "
+                        "the env's test slice is fixed, so seeds>1 produces "
+                        "bit-identical duplicate rows. Keep at 1 unless "
+                        "running with temperature>0.")
     p.add_argument("--output-json", default="outputs/eval_results.jsonl")
     p.add_argument("--label", default="base",
                    help="Label to tag this eval run (e.g. 'base', 'trained').")
