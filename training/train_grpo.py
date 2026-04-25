@@ -399,13 +399,15 @@ def main() -> None:
     print(f"[setup] tasks total={len(all_tasks)} train={len(train_tasks)} held_out={len(held_out)}", flush=True)
 
     # ----- dataset -----
+    # Training is fixed at single-turn (turn_limit=1); GRPO is single-step.
+    # Multi-turn lives in the env + eval pipeline, not here.
     train_ds = build_prompt_dataset(
         env, tokenizer, train_tasks, args.seeds_per_task,
-        enable_thinking=args.enable_thinking, turn_limit=args.turn_limit,
+        enable_thinking=args.enable_thinking,
     )
     eval_ds = build_prompt_dataset(
         env, tokenizer, sorted(held_out), seeds_per_task=2,
-        enable_thinking=args.enable_thinking, turn_limit=args.turn_limit,
+        enable_thinking=args.enable_thinking,
     ) if held_out else None
     print(f"[setup] train rows={len(train_ds)}  eval rows={len(eval_ds) if eval_ds else 0}", flush=True)
 
