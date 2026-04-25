@@ -39,9 +39,18 @@ FLAVOR="${FLAVOR:-l40sx1}"            # t4-medium | l4x1 | a10g-large | l40sx1 |
 TIMEOUT="${TIMEOUT:-4h}"              # bumped 3h -> 4h to cover judge-inference overhead
 IMAGE="${IMAGE:-pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime}"
 
+# Qwen3 thinking-mode toggle. true (default) = agent emits
+# <think>...</think> before <prompt>...</prompt>; false = direct
+# prompt emission, ~2-3x faster training. No effect on non-Qwen3 agents.
+ENABLE_THINKING="${ENABLE_THINKING:-true}"
+THINKING_FLAG="--enable-thinking"
+if [[ "${ENABLE_THINKING}" == "false" || "${ENABLE_THINKING}" == "False" ]]; then
+  THINKING_FLAG="--no-enable-thinking"
+fi
+
 echo "[hf-jobs] repo=$REPO_URL@$REPO_REF"
 echo "[hf-jobs] agent=$AGENT_MODEL target=$TARGET_MODEL"
-echo "[hf-jobs] steps=$MAX_STEPS  gens=$NUM_GENS  flavor=$FLAVOR"
+echo "[hf-jobs] steps=$MAX_STEPS  gens=$NUM_GENS  flavor=$FLAVOR  enable_thinking=$ENABLE_THINKING"
 echo "[hf-jobs] push_to_hub=$PUSH_TO_HUB"
 
 # Single-line bash command the job will execute.
@@ -94,6 +103,7 @@ python -u training/train_grpo.py \\
   --learning-rate ${LR} \
   --beta ${BETA} \
   --seeds-per-task ${SEEDS_PER_TASK} \
+  ${THINKING_FLAG} \
   --output-dir /app/outputs/grpo \
   ${PUSH_TO_HUB:+--push-to-hub ${PUSH_TO_HUB}}
 echo "[hf-jobs] done."
