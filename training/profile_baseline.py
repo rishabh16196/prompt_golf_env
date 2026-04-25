@@ -83,13 +83,17 @@ def main() -> None:
             test_inputs = [x for x, _ in spec.test_examples]
             test_expected = [y for _, y in spec.test_examples]
 
+            # Token count of the verbose description (using target's tokenizer).
+            prompt_tokens = target.count_prompt_tokens(spec.description)
+
             # Run the target with the verbose description as the prompt.
             gens = target.generate_batch(
                 prompt=spec.description,
                 test_inputs=test_inputs,
                 max_output_tokens=MAX_TARGET_OUTPUT_TOKENS,
             )
-            outputs = [g.text for g in gens]
+            # TargetGeneration has fields (input_text, output_text)
+            outputs = [g.output_text for g in gens]
 
             # Score each output against the corresponding expected, average.
             per_example = [
@@ -97,9 +101,6 @@ def main() -> None:
                 for out, exp in zip(outputs, test_expected)
             ]
             description_baseline = sum(per_example) / max(1, len(per_example))
-
-            # Token count of the description as fed to the target.
-            prompt_tokens = sum(g.prompt_tokens for g in gens) // max(1, len(gens))
 
             row = {
                 "task_id": tid,
