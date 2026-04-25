@@ -52,6 +52,7 @@ try:
     from .tasks import TASKS, TaskSpec, get_task, list_task_ids
     from .tasks_v2 import TASKS_V2
     from .tasks_tough import TASKS_TOUGH
+    from .tasks_policy import TASKS_POLICY
 except ImportError:
     from models import (
         DEFAULT_PROMPT_BUDGET,
@@ -70,10 +71,12 @@ except ImportError:
     from server.tasks import TASKS, TaskSpec, get_task, list_task_ids
     from server.tasks_v2 import TASKS_V2
     from server.tasks_tough import TASKS_TOUGH
+    from server.tasks_policy import TASKS_POLICY
 
-# Merged v1 + v2 + tough task bank. task_ids don't clash by construction
-# (v2 tasks are uniquely named, tough tasks are prefixed `tough_`).
-_ALL_TASKS = {**TASKS, **TASKS_V2, **TASKS_TOUGH}
+# Merged v1 + v2 + tough + policy task bank. task_ids don't clash:
+# v2 tasks have unique names, tough tasks are prefixed `tough_`,
+# policy tasks are prefixed `policy_`.
+_ALL_TASKS = {**TASKS, **TASKS_V2, **TASKS_TOUGH, **TASKS_POLICY}
 
 
 # Baseline zero-shot scores are (target_id, task_id) -> score. Computed on

@@ -103,7 +103,8 @@ def main() -> None:
     from prompt_golf_env.server.tasks import TASKS
     from prompt_golf_env.server.tasks_v2 import TASKS_V2
     from prompt_golf_env.server.tasks_tough import TASKS_TOUGH
-    _ALL_TASKS = {**TASKS, **TASKS_V2, **TASKS_TOUGH}
+    from prompt_golf_env.server.tasks_policy import TASKS_POLICY
+    _ALL_TASKS = {**TASKS, **TASKS_V2, **TASKS_TOUGH, **TASKS_POLICY}
 
     # Tokenizer for the verbose-prompt token count (same one the env
     # uses, so the numbers are directly comparable).

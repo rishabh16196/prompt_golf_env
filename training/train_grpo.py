@@ -374,6 +374,7 @@ def main() -> None:
     from prompt_golf_env.server.tasks import list_task_ids as list_task_ids_v1
     from prompt_golf_env.server.tasks_v2 import list_task_ids_v2
     from prompt_golf_env.server.tasks_tough import list_task_ids_tough
+    from prompt_golf_env.server.tasks_policy import list_task_ids_policy
 
     # NOTE: we deliberately do NOT import Unsloth here. Unsloth patches
     # Qwen2Attention at import time, which breaks the target model
@@ -393,7 +394,10 @@ def main() -> None:
 
     # ----- env (target loaded lazily on first forward pass) -----
     env = PromptGolfEnvironment()
-    all_tasks = list_task_ids_v1() + list_task_ids_v2() + list_task_ids_tough()
+    all_tasks = (
+        list_task_ids_v1() + list_task_ids_v2()
+        + list_task_ids_tough() + list_task_ids_policy()
+    )
     held_out = {t.strip() for t in args.held_out_tasks.split(",") if t.strip()}
     train_tasks = [t for t in all_tasks if t not in held_out]
     print(f"[setup] tasks total={len(all_tasks)} train={len(train_tasks)} held_out={len(held_out)}", flush=True)
