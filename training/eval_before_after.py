@@ -124,7 +124,13 @@ def main() -> None:
 
     from prompt_golf_env.models import GolfAction
     from prompt_golf_env.server.prompt_golf_environment import PromptGolfEnvironment
-    from prompt_golf_env.server.tasks import TASKS, list_task_ids
+    from prompt_golf_env.server.tasks import TASKS, list_task_ids as list_v1
+    from prompt_golf_env.server.tasks_v2 import TASKS_V2, list_task_ids_v2
+
+    _ALL_TASKS = {**TASKS, **TASKS_V2}
+
+    def list_task_ids():
+        return list_v1() + list_task_ids_v2()
 
     # Load agent
     model, tok = load_agent(args.agent_model, args.adapter)
@@ -156,8 +162,8 @@ def main() -> None:
             row = {
                 "label": args.label,
                 "task_id": task_id,
-                "category": TASKS[task_id].category,
-                "difficulty": TASKS[task_id].difficulty,
+                "category": _ALL_TASKS[task_id].category,
+                "difficulty": _ALL_TASKS[task_id].difficulty,
                 "seed": seed,
                 "agent_prompt": agent_prompt,
                 "tokens": obs_after.submitted_prompt_tokens,
