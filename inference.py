@@ -52,8 +52,32 @@ TEMPERATURE = 0.3
 MAX_TOKENS = 256  # cap on the agent's prompt-completion tokens
 PROMPT_TAG_RE = re.compile(r"<prompt>(.*?)</prompt>", re.DOTALL | re.IGNORECASE)
 
+
+def _all_task_ids() -> List[str]:
+    """Enumerate every task id the env knows about (v1 + v2 + tough + policy).
+
+    Imports server-side bank modules lazily so this script still runs in a
+    client-only install (where the heavy server code may not be importable);
+    in that fallback case, returns just the v1 TASK_NAMES list.
+    """
+    try:
+        from prompt_golf_env.server.tasks import list_task_ids as _v1
+        from prompt_golf_env.server.tasks_v2 import list_task_ids_v2 as _v2
+        from prompt_golf_env.server.tasks_tough import list_task_ids_tough as _t
+        from prompt_golf_env.server.tasks_policy import list_task_ids_policy as _p
+        ids = _v1() + _v2() + _t() + _p()
+        # De-duplicate while preserving order
+        seen = set()
+        return [i for i in ids if not (i in seen or seen.add(i))]
+    except Exception:
+        return list(TASK_NAMES)
+
+
+_ALL_TASK_IDS = _all_task_ids()
+
 # Tasks to run. Override with PROMPT_GOLF_TASKS env var (comma-separated).
-TASKS = os.getenv("PROMPT_GOLF_TASKS", ",".join(TASK_NAMES)).split(",")
+# Default = every task the env knows about.
+TASKS = os.getenv("PROMPT_GOLF_TASKS", ",".join(_ALL_TASK_IDS)).split(",")
 
 
 SYSTEM_PROMPT = textwrap.dedent(
@@ -299,9 +323,11 @@ async def main() -> None:
         all_results = []
         for task in TASKS:
             task = task.strip()
-            if task not in TASK_NAMES:
-                print(f"[DEBUG] Skipping unknown task: {task}", flush=True)
+            if not task:
                 continue
+            # Trust the env to reject unknown task ids — TASK_NAMES is a
+            # static convenience list and falls behind the live bank
+            # (v2 / tough / policy tasks were added after it was hand-coded).
             result = await run_task(client, env, task)
             all_results.append(result)
 
