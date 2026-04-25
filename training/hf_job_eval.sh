@@ -16,13 +16,25 @@ REPO_URL="${REPO_URL:-https://huggingface.co/spaces/rishabh16196/prompt_golf_env
 REPO_REF="${REPO_REF:-main}"
 ADAPTER_REPO="${ADAPTER_REPO:-rishabh16196/prompt-golf-grpo-1.5b}"
 
-AGENT_MODEL="${AGENT_MODEL:-Qwen/Qwen2.5-1.5B-Instruct}"
-TARGET_MODEL="${TARGET_MODEL:-Qwen/Qwen2.5-0.5B-Instruct}"
-SEEDS_PER_TASK="${SEEDS_PER_TASK:-3}"
+AGENT_MODEL="${AGENT_MODEL:-Qwen/Qwen3-1.7B}"
+TARGET_MODEL="${TARGET_MODEL:-Qwen/Qwen3-1.7B}"
+# Eval is deterministic at temperature=0; seeds>1 produces bit-identical
+# duplicate rows. Override only when running with temperature>0.
+SEEDS_PER_TASK="${SEEDS_PER_TASK:-1}"
+# Match the chat template the adapter was TRAINED against. The
+# in-flight v2 adapter trained with thinking=OFF; v3 cross-family runs
+# will train with thinking=ON. Override accordingly.
+ENABLE_THINKING="${ENABLE_THINKING:-false}"
 
 FLAVOR="${FLAVOR:-l40sx1}"
 TIMEOUT="${TIMEOUT:-1h}"
 IMAGE="${IMAGE:-pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime}"
+
+# Build conditional thinking flag
+THINKING_FLAG="--no-enable-thinking"
+if [[ "${ENABLE_THINKING}" == "true" || "${ENABLE_THINKING}" == "True" ]]; then
+  THINKING_FLAG="--enable-thinking"
+fi
 
 run_eval() {
   local LABEL=$1
@@ -51,6 +63,7 @@ python -u training/eval_before_after.py \
   --agent-model ${AGENT_MODEL} \
   --target-model ${TARGET_MODEL} \
   --seeds-per-task ${SEEDS_PER_TASK} \
+  ${THINKING_FLAG} \
   --label ${LABEL} \
   --output-json /app/outputs/eval_${LABEL}.jsonl \
   --push-to-hub ${ADAPTER_REPO} \

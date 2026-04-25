@@ -37,7 +37,10 @@ from openenv.core.env_server.types import State
 try:
     from ..models import (
         DEFAULT_PROMPT_BUDGET,
+        DEFAULT_TURN_LIMIT,
         MAX_TARGET_OUTPUT_TOKENS,
+        MULTITURN_FEEDBACK_EXAMPLES,
+        MULTITURN_SCORING_EXAMPLES,
         TEST_EXAMPLES_PER_EPISODE,
         TRAIN_EXAMPLES_VISIBLE,
         GolfAction,
@@ -52,7 +55,10 @@ try:
 except ImportError:
     from models import (
         DEFAULT_PROMPT_BUDGET,
+        DEFAULT_TURN_LIMIT,
         MAX_TARGET_OUTPUT_TOKENS,
+        MULTITURN_FEEDBACK_EXAMPLES,
+        MULTITURN_SCORING_EXAMPLES,
         TEST_EXAMPLES_PER_EPISODE,
         TRAIN_EXAMPLES_VISIBLE,
         GolfAction,
@@ -97,8 +103,16 @@ class PromptGolfEnvironment(Environment):
         # Resampled every reset
         self._train_ex: List[tuple[str, str]] = []
         self._test_ex: List[tuple[str, str]] = []
+        # Multi-turn slices (only populated when turn_limit > 1)
+        self._feedback_ex: List[tuple[str, str]] = []
+        self._scoring_ex: List[tuple[str, str]] = []
         # Cached per-episode baseline (target with empty prompt)
         self._baseline_zero_shot: float = 0.0
+
+        # Multi-turn state (single-turn defaults preserve v2 behavior)
+        self._turn_count: int = 0
+        self._turn_limit: int = DEFAULT_TURN_LIMIT
+        self._prior_attempts: List[dict] = []
 
         # Reward rubric (stateless per episode)
         self._rubric = PromptGolfRubric()
@@ -115,11 +129,17 @@ class PromptGolfEnvironment(Environment):
         seed: Optional[int] = None,
         episode_id: Optional[str] = None,
         task: Optional[str] = None,
+        turn_limit: int = DEFAULT_TURN_LIMIT,
     ) -> GolfObservation:
         self._state = State(episode_id=episode_id or str(uuid4()), step_count=0)
         self._rng = random.Random(seed) if seed is not None else random.Random()
 
         self._task = self._choose_task(task)
+
+        # Reset multi-turn state
+        self._turn_count = 0
+        self._turn_limit = max(1, int(turn_limit))
+        self._prior_attempts = []
 
         # Sample visible train examples (stable for this episode)
         train_pool = list(self._task.train_examples)
@@ -132,6 +152,23 @@ class PromptGolfEnvironment(Environment):
         test_pool = list(self._task.test_examples)
         self._rng.shuffle(test_pool)
         self._test_ex = test_pool[:TEST_EXAMPLES_PER_EPISODE]
+
+        # Multi-turn split: feedback slice (revealed between turns) vs
+        # scoring slice (only ever scored on the FINAL turn). Single-turn
+        # episodes leave both empty and use _test_ex as before.
+        if self._turn_limit > 1:
+            self._feedback_ex = self._test_ex[:MULTITURN_FEEDBACK_EXAMPLES]
+            self._scoring_ex = self._test_ex[
+                MULTITURN_FEEDBACK_EXAMPLES:
+                MULTITURN_FEEDBACK_EXAMPLES + MULTITURN_SCORING_EXAMPLES
+            ]
+            # Guarantee a non-empty scoring slice even on tasks with few
+            # test examples — fall back to the full slice.
+            if not self._scoring_ex:
+                self._scoring_ex = list(self._test_ex)
+        else:
+            self._feedback_ex = []
+            self._scoring_ex = []
 
         # Compute (or reuse) baseline for this task with empty prompt
         cache_key = (self._target.model_id, self._task.task_id)
@@ -146,7 +183,10 @@ class PromptGolfEnvironment(Environment):
             target_model_id=self._target.model_id,
             prompt_budget_tokens=self._task.budget_tokens or DEFAULT_PROMPT_BUDGET,
             max_target_output_tokens=MAX_TARGET_OUTPUT_TOKENS,
-            num_test_examples=len(self._test_ex),
+            num_test_examples=(
+                len(self._scoring_ex) if self._turn_limit > 1
+                else len(self._test_ex)
+            ),
             train_examples=[
                 {"input": x, "expected": y} for (x, y) in self._train_ex
             ],
@@ -154,6 +194,9 @@ class PromptGolfEnvironment(Environment):
             baseline_zero_shot_score=round(self._baseline_zero_shot, 4),
             done=False,
             reward=0.0,
+            turn_number=1,
+            turn_limit=self._turn_limit,
+            prior_attempts=[],
             metadata={
                 "task_difficulty": self._task.difficulty,
                 "task_tags": list(self._task.tags),
@@ -170,18 +213,67 @@ class PromptGolfEnvironment(Environment):
         if self._task is None:
             raise RuntimeError("step() called before reset()")
 
+        # Bump turn counter; `is_final_turn` decides scoring slice + done-flag.
+        self._turn_count += 1
+        is_final_turn = self._turn_count >= self._turn_limit
+
         # Truncate prompt to the task's budget (in target tokens).
         budget = self._task.budget_tokens or DEFAULT_PROMPT_BUDGET
         truncated_prompt = self._target.truncate_to_tokens(action.prompt, budget)
         submitted_tokens = self._target.count_prompt_tokens(truncated_prompt)
 
-        # Score the prompt.
+        # Pick the scoring slice for THIS turn:
+        # - single-turn (turn_limit=1): score on the full _test_ex (v2 behavior)
+        # - multi-turn non-final: score on _feedback_ex (cheap, revealed to agent)
+        # - multi-turn final:    score on _scoring_ex (held-out, drives reward)
+        if self._turn_limit > 1:
+            scoring_slice = self._scoring_ex if is_final_turn else self._feedback_ex
+        else:
+            scoring_slice = self._test_ex
+
         raw_task_score, sample_gens = self._score_prompt(
-            truncated_prompt, return_samples=True
+            truncated_prompt, return_samples=True, examples=scoring_slice,
         )
 
-        # Apply rubric.
-        held_out_inputs = [x for x, _ in self._test_ex]
+        # ----- Non-final turn in multi-turn: return feedback obs (done=False) -----
+        if not is_final_turn:
+            self._prior_attempts.append({
+                "turn": self._turn_count,
+                "prompt": truncated_prompt,
+                "tokens": submitted_tokens,
+                "feedback_score": round(raw_task_score, 4),
+                "sample_generations": sample_gens,
+            })
+            return GolfObservation(
+                task_id=self._task.task_id,
+                task_category=self._task.category,
+                task_description=self._task.description,
+                target_model_id=self._target.model_id,
+                prompt_budget_tokens=budget,
+                max_target_output_tokens=MAX_TARGET_OUTPUT_TOKENS,
+                num_test_examples=len(self._scoring_ex),
+                train_examples=[
+                    {"input": x, "expected": y} for (x, y) in self._train_ex
+                ],
+                scorer_name=self._task.scorer,
+                baseline_zero_shot_score=round(self._baseline_zero_shot, 4),
+                submitted_prompt_tokens=submitted_tokens,
+                raw_task_score=round(raw_task_score, 4),  # on feedback slice
+                sample_generations=sample_gens,
+                done=False,
+                reward=0.0,                                # no reward until terminal
+                turn_number=self._turn_count + 1,           # next turn
+                turn_limit=self._turn_limit,
+                prior_attempts=list(self._prior_attempts),
+                metadata={
+                    "task_difficulty": self._task.difficulty,
+                    "task_tags": list(self._task.tags),
+                    "is_intermediate_feedback": True,
+                },
+            )
+
+        # ----- Final (or single-turn): apply rubric, return terminal obs -----
+        held_out_inputs = [x for x, _ in scoring_slice]
         result = self._rubric.grade(
             raw_task_score=raw_task_score,
             baseline_zero_shot_score=self._baseline_zero_shot,
@@ -192,8 +284,6 @@ class PromptGolfEnvironment(Environment):
         )
         details = grade_details_dict(result, task_id=self._task.task_id)
 
-        # Build terminal observation. We re-emit the task framing so the
-        # agent/trainer has a self-contained record of the episode.
         return GolfObservation(
             task_id=self._task.task_id,
             task_category=self._task.category,
@@ -201,7 +291,7 @@ class PromptGolfEnvironment(Environment):
             target_model_id=self._target.model_id,
             prompt_budget_tokens=budget,
             max_target_output_tokens=MAX_TARGET_OUTPUT_TOKENS,
-            num_test_examples=len(self._test_ex),
+            num_test_examples=len(scoring_slice),
             train_examples=[
                 {"input": x, "expected": y} for (x, y) in self._train_ex
             ],
@@ -216,6 +306,9 @@ class PromptGolfEnvironment(Environment):
             sample_generations=sample_gens,
             done=True,
             reward=round(result.reward, 4),
+            turn_number=self._turn_count,
+            turn_limit=self._turn_limit,
+            prior_attempts=list(self._prior_attempts),
             metadata={
                 "task_difficulty": self._task.difficulty,
                 "task_tags": list(self._task.tags),
@@ -244,15 +337,23 @@ class PromptGolfEnvironment(Environment):
         return _ALL_TASKS[task_id]
 
     def _score_prompt(
-        self, prompt: str, return_samples: bool = False
+        self,
+        prompt: str,
+        return_samples: bool = False,
+        examples: Optional[List[tuple[str, str]]] = None,
     ) -> float | tuple[float, list]:
         """Run target on test inputs with `prompt`, score each output,
         return mean score. Optionally also return up to 2 sample triples
         for debugging.
+
+        `examples` overrides the default `self._test_ex` slice — used by
+        multi-turn step() to score against the feedback or scoring slice
+        rather than the full pool.
         """
         assert self._task is not None
-        test_inputs = [x for x, _ in self._test_ex]
-        test_expected = [y for _, y in self._test_ex]
+        ex_pool = examples if examples is not None else self._test_ex
+        test_inputs = [x for x, _ in ex_pool]
+        test_expected = [y for _, y in ex_pool]
 
         generations: List[TargetGeneration] = self._target.generate_batch(
             prompt=prompt,

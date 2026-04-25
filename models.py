@@ -85,6 +85,18 @@ TEST_EXAMPLES_PER_EPISODE: int = 6
 # Number of visible train examples shown to the agent in the observation.
 TRAIN_EXAMPLES_VISIBLE: int = 3
 
+# --- Multi-turn ---
+# When turn_limit > 1, the test pool is split:
+#   - first MULTITURN_FEEDBACK_EXAMPLES are shown to the agent between
+#     turns (target outputs revealed) so it can refine its prompt
+#   - the remaining MULTITURN_SCORING_EXAMPLES score ONLY the final turn
+# This prevents the agent from overfitting its prompt to outputs it will
+# also be scored on. Single-turn (default) skips the split and scores on
+# the full TEST_EXAMPLES_PER_EPISODE slice, preserving v2 behavior.
+MULTITURN_FEEDBACK_EXAMPLES: int = 2
+MULTITURN_SCORING_EXAMPLES: int = 4
+DEFAULT_TURN_LIMIT: int = 1
+
 
 # ---------------------------------------------------------------------------
 # Action
@@ -210,5 +222,32 @@ class GolfObservation(Observation):
         description=(
             "Up to 2 (input, target_output, expected) triples from the "
             "held-out set, for debugging / demo. Only populated at step."
+        ),
+    )
+
+    # --- Multi-turn fields (single-turn episodes leave these at defaults) ---
+    turn_number: int = Field(
+        default=1,
+        description=(
+            "1-indexed current turn within the episode. Always 1 for "
+            "single-turn (turn_limit=1) episodes."
+        ),
+    )
+    turn_limit: int = Field(
+        default=DEFAULT_TURN_LIMIT,
+        description=(
+            "Total turns the agent has in this episode. Set via "
+            "reset(turn_limit=N). When turn_number==turn_limit, the "
+            "next step() will be terminal and scored on the held-out "
+            "scoring slice."
+        ),
+    )
+    prior_attempts: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "History of attempts in this episode (only populated on "
+            "non-terminal observations during multi-turn). Each entry: "
+            "{prompt, tokens, feedback_score, sample_generations}. The "
+            "agent uses these to refine its prompt for the next turn."
         ),
     )

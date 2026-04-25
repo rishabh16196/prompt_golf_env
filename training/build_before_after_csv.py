@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
                         "verbose_accuracy (target's accuracy when given "
                         "the hand-written description as the prompt). "
                         "If omitted, verbose_accuracy is left blank.")
-    p.add_argument("--target-model", default="Qwen/Qwen3-1.7B",
+    p.add_argument("--target-model", default="meta-llama/Llama-3.2-3B-Instruct",
                    help="Used to count tokens of the verbose description.")
     p.add_argument("--output-csv", default="outputs/before_after_prompts.csv")
     p.add_argument("--push-to-hub", default=None,

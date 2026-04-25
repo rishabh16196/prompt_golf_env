@@ -14,7 +14,7 @@ REPO_URL="${REPO_URL:-https://huggingface.co/spaces/rishabh16196/prompt_golf_env
 REPO_REF="${REPO_REF:-main}"
 PUSH_TO_HUB="${PUSH_TO_HUB:-rishabh16196/prompt-golf-grpo-1.5b}"
 
-TARGET_MODEL="${TARGET_MODEL:-Qwen/Qwen3-1.7B}"
+TARGET_MODEL="${TARGET_MODEL:-meta-llama/Llama-3.2-3B-Instruct}"
 TASKS="${TASKS:-all}"
 
 FLAVOR="${FLAVOR:-l4x1}"           # smaller flavor — no agent, no judge, no GRPO

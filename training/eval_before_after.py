@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--agent-model", default="Qwen/Qwen3-1.7B")
     p.add_argument("--adapter", default=None,
                    help="Optional LoRA adapter dir or HF repo id.")
-    p.add_argument("--target-model", default="Qwen/Qwen3-1.7B")
+    p.add_argument("--target-model", default="meta-llama/Llama-3.2-3B-Instruct")
     p.add_argument("--tasks", default="all",
                    help="'all' or comma-separated task ids.")
     p.add_argument("--seeds-per-task", type=int, default=1,
@@ -53,7 +53,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output-json", default="outputs/eval_results.jsonl")
     p.add_argument("--label", default="base",
                    help="Label to tag this eval run (e.g. 'base', 'trained').")
-    p.add_argument("--max-new-tokens", type=int, default=256)
+    p.add_argument("--max-new-tokens", type=int, default=768,
+                   help="Bumped from 256 to fit Qwen3's <think>...</think> "
+                        "block (200-600 tokens) plus the final prompt. "
+                        "Drop back to 256 if running with thinking=OFF.")
+    p.add_argument("--enable-thinking", action="store_true", default=True,
+                   help="Apply Qwen3 chat template with thinking ON. "
+                        "Default. Use --no-enable-thinking when evaluating "
+                        "an adapter that was TRAINED with thinking=False.")
+    p.add_argument("--no-enable-thinking", dest="enable_thinking",
+                   action="store_false")
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--push-to-hub", default=None,
                    help="HF model repo id to upload the eval JSONL under evals/eval_<label>.jsonl.")
@@ -86,16 +95,19 @@ def load_agent(agent_model: str, adapter: str | None):
     return model, tok
 
 
-def build_chat_string(tok, obs) -> str:
+def build_chat_string(tok, obs, enable_thinking: bool = True) -> str:
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": build_agent_user_message(obs)},
     ]
     if getattr(tok, "chat_template", None):
         try:
+            # Mirror the chat template the adapter was trained against.
+            # Pass --no-enable-thinking when evaluating a thinking=False
+            # adapter to keep eval-time inputs in-distribution.
             return tok.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True,
-                enable_thinking=False,
+                enable_thinking=enable_thinking,
             )
         except TypeError:
             return tok.apply_chat_template(
@@ -157,7 +169,7 @@ def main() -> None:
     for task_id in task_ids:
         for seed in range(args.seeds_per_task):
             obs = env.reset(task=task_id, seed=seed)
-            chat_str = build_chat_string(tok, obs)
+            chat_str = build_chat_string(tok, obs, enable_thinking=args.enable_thinking)
             agent_prompt = generate_prompt(
                 model, tok, chat_str,
                 max_new_tokens=args.max_new_tokens,

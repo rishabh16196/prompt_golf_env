@@ -24,7 +24,7 @@ PUSH_TO_HUB="${PUSH_TO_HUB:-rishabh16196/prompt-golf-grpo-1.5b}"
 # hard dep via TRL's newer import path; installing vllm on top of the
 # current image is flaky. Revisit for v3.
 AGENT_MODEL="${AGENT_MODEL:-Qwen/Qwen3-1.7B}"
-TARGET_MODEL="${TARGET_MODEL:-Qwen/Qwen3-1.7B}"
+TARGET_MODEL="${TARGET_MODEL:-meta-llama/Llama-3.2-3B-Instruct}"
 JUDGE_MODEL="${JUDGE_MODEL:-Qwen/Qwen3-8B}"
 
 MAX_STEPS="${MAX_STEPS:-500}"

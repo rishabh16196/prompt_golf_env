@@ -34,7 +34,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Per-task target-capability profiler")
-    p.add_argument("--target-model", default="Qwen/Qwen3-1.7B")
+    p.add_argument("--target-model", default="meta-llama/Llama-3.2-3B-Instruct")
     p.add_argument("--target-backend", default="hf",
                    help="hf | mock (mock for local dev only)")
     p.add_argument("--tasks", default="all",

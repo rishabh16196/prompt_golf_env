@@ -72,6 +72,33 @@ def build_agent_user_message(obs) -> str:
         f"- input: {ex.get('input','')!r}  expected: {ex.get('expected','')!r}"
         for ex in (obs.train_examples or [])
     )
+
+    # When the env runs in multi-turn mode and a prior attempt has been
+    # scored, fold the per-attempt feedback into the user message so the
+    # agent can see what its earlier prompts produced and refine.
+    prior = list(getattr(obs, "prior_attempts", None) or [])
+    prior_block = ""
+    if prior:
+        chunks = []
+        for att in prior:
+            sg = att.get("sample_generations") or []
+            sg_lines = "\n".join(
+                f"      input: {g.get('input','')!r}  "
+                f"target_said: {g.get('target_output','')!r}  "
+                f"expected: {g.get('expected','')!r}"
+                for g in sg[:2]
+            )
+            chunks.append(
+                f"  Turn {att.get('turn','?')}: prompt={att.get('prompt','')!r} "
+                f"(tokens={att.get('tokens','?')}, score={att.get('feedback_score',0):.2f})"
+                + (f"\n{sg_lines}" if sg_lines else "")
+            )
+        prior_block = (
+            "\n\nPRIOR ATTEMPTS (refine your prompt to score higher on the "
+            "scoring slice — note where the target's wording missed the "
+            "expected format):\n" + "\n".join(chunks)
+        )
+
     return textwrap.dedent(
         f"""
         TASK: {obs.task_id}  (category: {obs.task_category})
@@ -81,20 +108,23 @@ def build_agent_user_message(obs) -> str:
         BASELINE (empty prompt) SCORE: {obs.baseline_zero_shot_score:.2f}
 
         Visible train examples (do not copy verbatim):
-        {examples_block}
+        {examples_block}{prior_block}
 
         Write your prompt inside <prompt>...</prompt>.
         """
     ).strip()
 
 
-def build_chat_prompt(tokenizer, obs) -> str:
+def build_chat_prompt(tokenizer, obs, enable_thinking: bool = True) -> str:
     """Apply chat template → single string the agent's tokenizer will see.
 
     Passes enable_thinking=False for Qwen3 models so the agent emits its
     prompt directly instead of a <think>...</think> reasoning trace
-    followed by output. Thinking-mode output would also blow past our
-    max_completion_length budget.
+    followed by output. With thinking ON the agent gets reasoning scratch
+    space "for free" — only the final extracted prompt is counted in the
+    length-budget rubric, so think tokens don't hurt reward. The cost is
+    longer generations, addressed by raising --max-completion-length.
+    extract_prompt() already strips <think>...</think> blocks defensively.
     """
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -105,7 +135,7 @@ def build_chat_prompt(tokenizer, obs) -> str:
             # Qwen3 / Qwen3.5 support this kwarg; other models ignore it.
             return tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True,
-                enable_thinking=False,
+                enable_thinking=enable_thinking,
             )
         except TypeError:
             return tokenizer.apply_chat_template(
@@ -114,17 +144,20 @@ def build_chat_prompt(tokenizer, obs) -> str:
     return f"{SYSTEM_PROMPT}\n\n{build_agent_user_message(obs)}\n\nAssistant:"
 
 
-def build_prompt_dataset(env, tokenizer, task_ids: List[str], seeds_per_task: int):
+def build_prompt_dataset(
+    env, tokenizer, task_ids: List[str], seeds_per_task: int,
+    enable_thinking: bool = True,
+):
     """Build a HF Dataset where each row is (chat-formatted prompt, task_id, seed)."""
     from datasets import Dataset
 
     rows: List[Dict] = []
     for task_id in task_ids:
         for seed in range(seeds_per_task):
-            obs = env.reset(task=task_id, seed=seed)
+            obs = env.reset(task=task_id, seed=seed)  # turn_limit=1 (training fixed single-turn)
             rows.append(
                 {
-                    "prompt": build_chat_prompt(tokenizer, obs),
+                    "prompt": build_chat_prompt(tokenizer, obs, enable_thinking=enable_thinking),
                     "task_id": task_id,
                     "seed": seed,
                 }
@@ -259,7 +292,7 @@ def make_callback(log_state: Dict, output_dir: Path):
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="GRPO training for Prompt Golf")
     p.add_argument("--agent-model", default="Qwen/Qwen3-1.7B")
-    p.add_argument("--target-model", default="Qwen/Qwen3-1.7B")
+    p.add_argument("--target-model", default="meta-llama/Llama-3.2-3B-Instruct")
     p.add_argument("--output-dir", default="outputs/grpo")
 
     # Task split — held out spans v1 AND v2 for honest generalization eval
@@ -282,7 +315,23 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gradient-accumulation-steps", type=int, default=4)
     p.add_argument("--learning-rate", type=float, default=5e-6)
     p.add_argument("--beta", type=float, default=0.04, help="KL penalty")
-    p.add_argument("--max-completion-length", type=int, default=256)
+    p.add_argument("--max-completion-length", type=int, default=768,
+                   help="With enable_thinking=True (Qwen3), generations "
+                        "include a <think>...</think> reasoning block "
+                        "before the final prompt — typically 200-600 "
+                        "tokens. 768 leaves room for both. Drop to 256 "
+                        "if running thinking=OFF.")
+    p.add_argument("--enable-thinking", action="store_true", default=True,
+                   help="Apply Qwen3 chat template with thinking ON. "
+                        "Default. Use --no-enable-thinking to train a "
+                        "thinking=False adapter (matches v2 behavior).")
+    p.add_argument("--no-enable-thinking", dest="enable_thinking",
+                   action="store_false")
+    # NOTE: training is fixed at turn_limit=1 because GRPO is a
+    # single-decision algorithm (one prompt -> one reward). Multi-turn
+    # at training time would require PPO/A2C — deferred to v3.
+    # Multi-turn IS supported at inference / eval time (see
+    # eval_before_after.py --turn-limit).
     p.add_argument("--max-prompt-length", type=int, default=1024)
 
     # Rollout sampling — explicit so we don't silently inherit Qwen3's
@@ -350,8 +399,14 @@ def main() -> None:
     print(f"[setup] tasks total={len(all_tasks)} train={len(train_tasks)} held_out={len(held_out)}", flush=True)
 
     # ----- dataset -----
-    train_ds = build_prompt_dataset(env, tokenizer, train_tasks, args.seeds_per_task)
-    eval_ds = build_prompt_dataset(env, tokenizer, sorted(held_out), seeds_per_task=2) if held_out else None
+    train_ds = build_prompt_dataset(
+        env, tokenizer, train_tasks, args.seeds_per_task,
+        enable_thinking=args.enable_thinking, turn_limit=args.turn_limit,
+    )
+    eval_ds = build_prompt_dataset(
+        env, tokenizer, sorted(held_out), seeds_per_task=2,
+        enable_thinking=args.enable_thinking, turn_limit=args.turn_limit,
+    ) if held_out else None
     print(f"[setup] train rows={len(train_ds)}  eval rows={len(eval_ds) if eval_ds else 0}", flush=True)
 
     # ----- reward + callback -----
