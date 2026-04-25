@@ -53,6 +53,7 @@ def main() -> None:
 
     # Use the target backend and scorer directly — bypassing env.reset()
     # so we don't pay for empty-prompt baseline on every task.
+    from prompt_golf_env.models import MAX_TARGET_OUTPUT_TOKENS
     from prompt_golf_env.server.target_model import get_target_backend
     from prompt_golf_env.server.scorer import score_one
     from prompt_golf_env.server.tasks import TASKS
@@ -86,6 +87,7 @@ def main() -> None:
             gens = target.generate_batch(
                 prompt=spec.description,
                 test_inputs=test_inputs,
+                max_output_tokens=MAX_TARGET_OUTPUT_TOKENS,
             )
             outputs = [g.text for g in gens]
 
