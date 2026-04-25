@@ -46,7 +46,8 @@ pip install -q --no-deps -e .
 
 pip install -q 'openenv-core[core]>=0.2.2' \\
                'datasets>=3.0.0' 'accelerate>=0.34.0' \\
-               'huggingface_hub>=0.26.0' 'safetensors>=0.4.0'
+               'huggingface_hub>=0.26.0' 'safetensors>=0.4.0' \\
+               hf_transfer
 
 python -c "import torch; print('torch:', torch.__version__, '| cuda:', torch.cuda.is_available())"
 
