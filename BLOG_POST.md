@@ -9,7 +9,7 @@ authors:
 
 > *Production LLM systems waste billions of tokens a day prepending verbose policies that mostly aren't load-bearing. The only way to find out which words actually matter is for a human to iterate by hand — slow, target-specific, and gone the moment the policy changes.*
 >
-> *So we trained a 1.7B Qwen agent to do that work. It writes prompts for a frozen 3B Llama target it never saw the weights of, learning from the target's outputs alone — the way humans model each other. After 500 RL steps, it produces \~39-token prompts that retain **80% of 94-token human-prompt accuracy** and **win head-to-head on 63 of 90 tasks (70%)**.*
+> *So we trained a 1.7B Qwen agent to do that work. It writes prompts for a frozen 3B Llama target it never saw the weights of, learning from the target's outputs alone — the way humans model each other. After 500 RL steps, the agent's \~39-token prompts achieve **80% of the accuracy that human-written \~94-token prompts achieve on the same target** — and **win head-to-head on 63 of 90 tasks (70%)**.*
 >
 > *No gradient access. No shared tokenizer. Just outputs, watched long enough.*
 
