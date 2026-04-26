@@ -145,6 +145,13 @@ def main() -> None:
         base_accuracy = b.get("raw_task_score")
         trained_accuracy = t.get("raw_task_score")
 
+        # Pluck up to 3 sample test inputs (no expected outputs — those
+        # stay hidden so the user can judge target outputs themselves).
+        sample_inputs: List[str] = []
+        if spec:
+            for inp, _exp in (spec.test_examples or [])[:3]:
+                sample_inputs.append(inp)
+
         rows_out.append({
             "task_id": tid,
             "category": spec.category if spec else "",
@@ -162,6 +169,8 @@ def main() -> None:
             "trained_prompt": t.get("agent_prompt", ""),
             "trained_tokens": trained_tokens,
             "trained_accuracy": trained_accuracy,
+            # --- SAMPLE TEST INPUTS (for UI demo) ---
+            "sample_test_inputs": json.dumps(sample_inputs),
             # --- REWARD (rubric-composed) ---
             "base_reward": base_reward,
             "trained_reward": trained_reward,

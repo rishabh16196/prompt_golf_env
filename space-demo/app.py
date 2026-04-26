@@ -372,8 +372,22 @@ def _row_for_label(label: str) -> Optional[Dict]:
     return None
 
 
+def _parse_sample_inputs(row: Dict) -> List[str]:
+    raw = row.get("sample_test_inputs", "") or "[]"
+    try:
+        import json as _json
+        items = _json.loads(raw)
+        return [str(x) for x in items if isinstance(x, (str, int, float))]
+    except Exception:
+        return []
+
+
 def select_task(label: str):
     r = _row_for_label(label) or {}
+    samples = _parse_sample_inputs(r)
+    # Prefill the test_input box with the first sample (if any) so the
+    # demo is one-click-runnable; the dropdown lets the user pick others.
+    initial_input = samples[0] if samples else ""
     return (
         r.get("verbose_prompt", ""),
         r.get("base_prompt", ""),
@@ -388,8 +402,14 @@ def select_task(label: str):
         r.get("trained_accuracy", "?"),
         r.get("budget_tokens", "?"),
         r.get("task_id", ""),
-        "",  # test_input — start blank
+        initial_input,
+        gr.Dropdown(choices=samples, value=initial_input or None, interactive=True),
     )
+
+
+def use_sample_input(sample: str) -> str:
+    """Copy the chosen sample into the editable test_input box."""
+    return sample or ""
 
 
 def generate_three(verbose_prompt: str, base_prompt: str, trained_prompt: str,
@@ -476,11 +496,20 @@ def build_app() -> gr.Blocks:
                     t_acc = gr.Textbox(label="accuracy", interactive=False)
 
         gr.Markdown("### Test input — edit to try your own")
+        with gr.Row():
+            sample_dd = gr.Dropdown(
+                choices=[],
+                label="Sample test inputs from this task (click to load)",
+                interactive=True,
+                allow_custom_value=False,
+                scale=2,
+            )
         test_input = gr.Textbox(
             label="input",
             lines=3,
-            placeholder=("Type or paste a test input. The three prompts above "
-                         "will each be prepended to it before the target "
+            placeholder=("Type or paste a test input, or pick a sample "
+                         "from the dropdown above. The three prompts will "
+                         "each be prepended to it before the target "
                          "generates."),
         )
 
@@ -525,9 +554,10 @@ def build_app() -> gr.Blocks:
         select_outputs = [
             verbose_box, base_box, trained_box, cat, scorer,
             v_tok, b_tok, t_tok, v_acc, b_acc, t_acc,
-            _budget_state, _task_id_state, test_input,
+            _budget_state, _task_id_state, test_input, sample_dd,
         ]
         task_dd.change(select_task, inputs=[task_dd], outputs=select_outputs)
+        sample_dd.change(use_sample_input, inputs=[sample_dd], outputs=[test_input])
         regen_btn.click(
             regenerate_live,
             inputs=[_task_id_state, cat, verbose_box, _budget_state],
