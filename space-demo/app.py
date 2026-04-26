@@ -445,6 +445,65 @@ def generate_three(verbose_prompt: str, base_prompt: str, trained_prompt: str,
     return outs[0], outs[1], outs[2], metrics
 
 
+def compress_and_run(description: str, budget_str: str, test_input: str):
+    """Custom-task tab: take a free-form task description + test input,
+    have the trained agent emit a compressed prompt, then run the target.
+    """
+    description = (description or "").strip()
+    test_input = (test_input or "").strip()
+    if not description:
+        return "", "", "", "(describe your task above)"
+    if not load_agents():
+        return "", "", "", ("agent loading disabled — set "
+                            "DEMO_AGENT_ADAPTER to enable this tab")
+    try:
+        budget = int(budget_str)
+    except (ValueError, TypeError):
+        budget = 60
+
+    user_msg = build_user_message(
+        task_id="custom_task", category="custom",
+        description=description, budget=budget,
+        target_model_id=DEFAULTS["target_model"],
+    )
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_msg},
+    ]
+    try:
+        chat_str = _AGENT_TOK.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True,
+            enable_thinking=DEFAULTS["enable_thinking"],
+        )
+    except TypeError:
+        chat_str = _AGENT_TOK.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True,
+        )
+
+    t0 = time.time()
+    raw = _agent_generate(
+        _AGENT_TRAINED, _AGENT_TOK, chat_str,
+        max_new_tokens=DEFAULTS["agent_max_new_tokens"],
+    )
+    t1 = time.time()
+    trained_prompt = extract_prompt(raw)
+    trained_tok = count_tokens(trained_prompt)
+
+    if test_input:
+        outs = run_target_batch([trained_prompt], test_input)
+        target_output = outs[0]
+        t2 = time.time()
+        msg = (
+            f"agent: {t1-t0:.1f}s  |  target: {t2-t1:.1f}s  |  "
+            f"trained prompt: {trained_tok} tok"
+        )
+    else:
+        target_output = "(enter a test input to run the target)"
+        msg = f"agent: {t1-t0:.1f}s  |  trained prompt: {trained_tok} tok"
+
+    return trained_prompt, str(trained_tok), target_output, msg
+
+
 # ---------------------------------------------------------------------------
 # Build app
 # ---------------------------------------------------------------------------
@@ -461,94 +520,140 @@ def build_app() -> gr.Blocks:
         gr.Markdown(
             f"# Prompt Golf — Compression Demo\n"
             f"Compressed prompts from a Qwen3-1.7B agent (trained via GRPO), "
-            f"scored against **`{DEFAULTS['target_model']}`** as the target.  "
-            f"Tasks ordered by reward gain (top = biggest improvement).\n\n"
-            f"Three columns: **verbose** (the human-written task description), "
-            f"**untrained** (raw Qwen3 output), and **trained** (after RL "
-            f"fine-tuning). Pick a task, type a test input, watch the target "
-            f"produce outputs with each prompt side by side."
+            f"scored against **`{DEFAULTS['target_model']}`** as the target."
         )
 
-        with gr.Row():
-            task_dd = gr.Dropdown(
-                choices=task_choices(),
-                value=initial,
-                label="Task",
-                scale=4,
-            )
-            cat = gr.Textbox(label="category", interactive=False, scale=1)
-            scorer = gr.Textbox(label="scorer", interactive=False, scale=1)
-
-        # Hidden state for live regen
-        _task_id_state = gr.Textbox(visible=False)
-        _budget_state = gr.Textbox(visible=False)
-
-        with gr.Row():
-            with gr.Column():
-                gr.Markdown("### Verbose (human-written)")
-                verbose_box = gr.Textbox(
-                    label="prompt", lines=8, interactive=True,
+        with gr.Tabs():
+            with gr.TabItem("Browse trained-vs-untrained"):
+                gr.Markdown(
+                    "Tasks ordered by reward gain (top = biggest "
+                    "improvement). Three columns: **verbose** (human-"
+                    "written), **untrained** (raw Qwen3), and **trained** "
+                    "(after RL fine-tuning). Pick a task, type a test "
+                    "input, watch the target produce outputs side by side."
                 )
                 with gr.Row():
-                    v_tok = gr.Textbox(label="tokens", interactive=False)
-                    v_acc = gr.Textbox(label="accuracy", interactive=False)
-            with gr.Column():
-                gr.Markdown("### Untrained agent (base)")
-                base_box = gr.Textbox(
-                    label="prompt", lines=8, interactive=True,
+                    task_dd = gr.Dropdown(
+                        choices=task_choices(),
+                        value=initial,
+                        label="Task",
+                        scale=4,
+                    )
+                    cat = gr.Textbox(label="category", interactive=False, scale=1)
+                    scorer = gr.Textbox(label="scorer", interactive=False, scale=1)
+
+                # Hidden state for live regen
+                _task_id_state = gr.Textbox(visible=False)
+                _budget_state = gr.Textbox(visible=False)
+
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("### Verbose (human-written)")
+                        verbose_box = gr.Textbox(
+                            label="prompt", lines=8, interactive=True,
+                        )
+                        with gr.Row():
+                            v_tok = gr.Textbox(label="tokens", interactive=False)
+                            v_acc = gr.Textbox(label="accuracy", interactive=False)
+                    with gr.Column():
+                        gr.Markdown("### Untrained agent (base)")
+                        base_box = gr.Textbox(
+                            label="prompt", lines=8, interactive=True,
+                        )
+                        with gr.Row():
+                            b_tok = gr.Textbox(label="tokens", interactive=False)
+                            b_acc = gr.Textbox(label="accuracy", interactive=False)
+                    with gr.Column():
+                        gr.Markdown("### Trained agent (compressed)")
+                        trained_box = gr.Textbox(
+                            label="prompt", lines=8, interactive=True,
+                        )
+                        with gr.Row():
+                            t_tok = gr.Textbox(label="tokens", interactive=False)
+                            t_acc = gr.Textbox(label="accuracy", interactive=False)
+
+                gr.Markdown("### Test input — edit to try your own")
+                with gr.Row():
+                    sample_dd = gr.Dropdown(
+                        choices=[],
+                        label="Sample test inputs from this task (click to load)",
+                        interactive=True,
+                        allow_custom_value=False,
+                        scale=2,
+                    )
+                test_input = gr.Textbox(
+                    label="input",
+                    lines=3,
+                    placeholder=("Type or paste a test input, or pick a sample "
+                                 "from the dropdown above. The three prompts will "
+                                 "each be prepended to it before the target "
+                                 "generates."),
+                )
+
+                with gr.Row():
+                    regen_btn = gr.Button(
+                        "Regenerate prompts live (loads agent + LoRA)",
+                        variant="secondary",
+                    )
+                    run_btn = gr.Button(
+                        "Run target with all three prompts", variant="primary"
+                    )
+                regen_status = gr.Textbox(label="agent status", interactive=False)
+
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("### Target output — VERBOSE")
+                        out_v = gr.Textbox(label="output", lines=4, interactive=False)
+                    with gr.Column():
+                        gr.Markdown("### Target output — UNTRAINED")
+                        out_b = gr.Textbox(label="output", lines=4, interactive=False)
+                    with gr.Column():
+                        gr.Markdown("### Target output — TRAINED")
+                        out_t = gr.Textbox(label="output", lines=4, interactive=False)
+
+                metrics = gr.Textbox(label="metrics", interactive=False)
+
+            with gr.TabItem("Try a new task"):
+                gr.Markdown(
+                    "Describe a brand-new task, set a token budget, and "
+                    "(optionally) a test input. The trained agent will "
+                    "compress your description into a short system prompt, "
+                    "then the target runs it on your input. First click "
+                    "loads the agent + LoRA (~6 GB)."
+                )
+                custom_desc = gr.Textbox(
+                    label="Describe your task",
+                    lines=4,
+                    placeholder=("e.g. Classify the input email as urgent, "
+                                 "normal, or spam. Output one word."),
                 )
                 with gr.Row():
-                    b_tok = gr.Textbox(label="tokens", interactive=False)
-                    b_acc = gr.Textbox(label="accuracy", interactive=False)
-            with gr.Column():
-                gr.Markdown("### Trained agent (compressed)")
-                trained_box = gr.Textbox(
-                    label="prompt", lines=8, interactive=True,
+                    custom_budget = gr.Textbox(
+                        label="Token budget", value="60", scale=1,
+                    )
+                    custom_input = gr.Textbox(
+                        label="Test input (optional)", lines=2, scale=4,
+                        placeholder="Leave blank to just see the prompt.",
+                    )
+                custom_btn = gr.Button(
+                    "Compress with trained agent + run target",
+                    variant="primary",
                 )
                 with gr.Row():
-                    t_tok = gr.Textbox(label="tokens", interactive=False)
-                    t_acc = gr.Textbox(label="accuracy", interactive=False)
-
-        gr.Markdown("### Test input — edit to try your own")
-        with gr.Row():
-            sample_dd = gr.Dropdown(
-                choices=[],
-                label="Sample test inputs from this task (click to load)",
-                interactive=True,
-                allow_custom_value=False,
-                scale=2,
-            )
-        test_input = gr.Textbox(
-            label="input",
-            lines=3,
-            placeholder=("Type or paste a test input, or pick a sample "
-                         "from the dropdown above. The three prompts will "
-                         "each be prepended to it before the target "
-                         "generates."),
-        )
-
-        with gr.Row():
-            regen_btn = gr.Button(
-                "Regenerate prompts live (loads agent + LoRA)",
-                variant="secondary",
-            )
-            run_btn = gr.Button(
-                "Run target with all three prompts", variant="primary"
-            )
-        regen_status = gr.Textbox(label="agent status", interactive=False)
-
-        with gr.Row():
-            with gr.Column():
-                gr.Markdown("### Target output — VERBOSE")
-                out_v = gr.Textbox(label="output", lines=4, interactive=False)
-            with gr.Column():
-                gr.Markdown("### Target output — UNTRAINED")
-                out_b = gr.Textbox(label="output", lines=4, interactive=False)
-            with gr.Column():
-                gr.Markdown("### Target output — TRAINED")
-                out_t = gr.Textbox(label="output", lines=4, interactive=False)
-
-        metrics = gr.Textbox(label="metrics", interactive=False)
+                    with gr.Column(scale=2):
+                        gr.Markdown("### Trained agent prompt")
+                        custom_prompt_out = gr.Textbox(
+                            label="prompt", lines=6, interactive=False,
+                        )
+                        custom_tok = gr.Textbox(
+                            label="tokens", interactive=False,
+                        )
+                    with gr.Column(scale=2):
+                        gr.Markdown("### Target output")
+                        custom_target_out = gr.Textbox(
+                            label="output", lines=6, interactive=False,
+                        )
+                custom_status = gr.Textbox(label="status", interactive=False)
 
         gr.Markdown(
             "---\n"
@@ -557,8 +662,7 @@ def build_app() -> gr.Blocks:
             "an OpenEnv environment where the agent's *action* is a prompt "
             "and the *reward* is how well that prompt steers a frozen target "
             "LLM. The trained adapter shown here was fine-tuned with GRPO on "
-            "a 90-task bank including 3 long-context policy-compression "
-            "tasks (~700-token policies → ~25-token classifier prompts).\n"
+            "a 90-task bank.\n"
             "- 📝 [Blog post](https://huggingface.co/spaces/rishabh16196/prompt_golf_env/blob/main/BLOG_POST.md)\n"
             "- 📊 [Demo CSV](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/blob/main/evals/qwen_to_llama_demo.csv)\n"
             "- 🤖 [Trained adapter](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink)"
@@ -581,6 +685,12 @@ def build_app() -> gr.Blocks:
             generate_three,
             inputs=[verbose_box, base_box, trained_box, test_input],
             outputs=[out_v, out_b, out_t, metrics],
+        )
+        custom_btn.click(
+            compress_and_run,
+            inputs=[custom_desc, custom_budget, custom_input],
+            outputs=[custom_prompt_out, custom_tok,
+                     custom_target_out, custom_status],
         )
         app.load(select_task, inputs=[task_dd], outputs=select_outputs)
 
