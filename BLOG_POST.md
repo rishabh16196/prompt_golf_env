@@ -262,9 +262,6 @@ The full row-by-row demo CSV is at **[`evals/qwen_to_llama_demo.csv`](https://hu
 | `tough_yaml_nested_depth` | 74 tok / 0.96 | **20 tok** / **1.00** | 3.7× compression, accuracy improved |
 | `json_key_ordering` | 47 tok / 0.61 | **38 tok** / **0.78** | Shorter AND +17pp accuracy |
 | `tough_fallacy_classify` | 164 tok / 0.00 | **59 tok** / **0.33** | Trained agent added the label vocabulary the verbose prompt forgot |
-| `policy_msn_ad_creative` | **737 tok** / 0.00 | **20 tok** / 0.00 | 37× compression — both fail because Llama-3.2-3B can't reason over the policy hierarchy, but the compression doesn't *cost* anything |
-
-The `policy_msn_ad_creative` row is the most interesting. Both prompts get 0 accuracy, so it looks like a draw — but the verbose prompt was charging 737 tokens of prefill on every request to deliver that 0. The trained agent does it for 20. **Pair the compressed prompt with a stronger target and you'd ship the same behavior at 37× lower input-token cost.**
 
 ### What the agent actually wrote
 
@@ -279,12 +276,6 @@ For YAML extraction with strict nesting:
 > *Verbose:* 74 tokens describing depth requirements, entity coverage, format constraints, output instructions.
 >
 > *Trained agent:* "Generate a YAML document that meets the specified minimum nesting depth and includes all entities from the given specification." (20 tokens, **1.00 accuracy**)
-
-For policy compliance — the long-context money case:
-
-> *Verbose:* 737 tokens of MSN ad-creative policy listing prohibited content, restricted categories, format standards, decision schemas.
->
-> *Trained agent:* "Classify the input creative as allow, disallow, or review based on the given policy guidelines." (20 tokens)
 
 ### When the agent doesn't just shrink — it improves
 
