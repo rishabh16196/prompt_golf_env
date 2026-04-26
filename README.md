@@ -33,6 +33,7 @@ A Qwen3-1.7B agent (trained via TRL GRPO) learns to write **35-token prompts** t
 | [`prompt-golf-qwen-to-llama-nothink`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink) | Qwen→Llama, thinking=OFF (**hero**) | adapter + plots + train_metrics + base/trained eval JSONLs + demo CSV |
 | [`prompt-golf-qwen-to-llama`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama) | Qwen→Llama, thinking=ON | same artifacts (A/B variant) |
 | [`prompt-golf-grpo-1.5b`](https://huggingface.co/rishabh16196/prompt-golf-grpo-1.5b) | Qwen→Qwen same-family (control) | same artifacts |
+| [`prompt-golf-multistep-llama`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama) | Qwen→Llama, **multi-turn (3 turns)** | adapter + train_metrics + base/trained eval JSONLs |
 
 ### Training pipeline ([`training/`](https://github.com/rishabh16196/prompt_golf_env/tree/main/training))
 
@@ -137,6 +138,29 @@ Identical training setup but with Qwen3's `<think>...</think>` chat template ena
 OFF wins on reward and compression; ON wins on accuracy by 1.6pp at a 30% token cost. We ship OFF as the default; ON is a different operating point on the accuracy/length frontier.
 
 📊 **Demo CSV:** [`evals/qwen_to_llama_demo.csv`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama/blob/main/evals/qwen_to_llama_demo.csv)
+
+### Multi-turn variant: 3 turns per episode
+
+Same agent + target as the hero, but each episode runs `turn_limit=3` — the agent sees its prior prompts + per-example feedback on a 2-example feedback slice, and only the final-turn prompt is judged on a held-out 4-example scoring slice. Trained with the trajectory-level GRPO trainer (`train_grpo_multistep.py`), 150 steps × 8 trajectories × 3 turns.
+
+| | Single-step hero | Multi-step (3 turns) |
+|---|---|---|
+| Trained accuracy | 0.523 | **0.576** |
+| Trained reward | +0.426 | **+0.440** |
+| Mean tokens | **35** | 43.7 |
+| Trained beats untrained on | — | 29 / 90 tasks |
+
+**Multi-step is a conditional improvement, not a strict upgrade:**
+
+| Where it wins | Where it loses |
+|---|---|
+| `reasoning_tough` (5 wins / 0 losses) | `format` (2 wins / 5 losses) |
+| `classification_tough` (7 / 2) | `format_three_bullets`, `format_uppercase` (bloat with no accuracy gain) |
+| `policy_compression` (1 win — `policy_content_moderation` 0.00 → 0.67) | Dead-target tasks (agent burns tokens trying anyway, e.g. `policy_finreg_communication_review` 17→112 tokens, both 0.00) |
+
+The intuition: multi-turn relaxes length pressure because the agent has room to debug across turns. That helps tasks where the agent needs reasoning room (tough reasoning, tough classification, complex extraction). It hurts tasks where short single-shot prompts already win (format-strict tasks). **Single-step is the right default for cost-sensitive deployments; multi-step is the right pick when accuracy ceilings matter more than token count.**
+
+📊 **Eval JSONLs:** [`evals/eval_base.jsonl`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/blob/main/evals/eval_base.jsonl) + [`evals/eval_trained.jsonl`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/blob/main/evals/eval_trained.jsonl)
 
 ---
 

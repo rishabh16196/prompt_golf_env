@@ -288,11 +288,47 @@ This looks like a "win" for Qwen→Qwen on win-rate, but the framing is misleadi
 
 *Identical training setup with Qwen3's `<think>...</think>` chat template enabled. Trajectory is similar in shape but absolute reward plateaus lower — the extra tokens spent inside `<think>` cost more than the accuracy gain they buy.*
 
-All three trained adapters are public, with their own demo CSVs:
+All trained adapters are public, with their own demo CSVs:
 
 - 🥇 **[`prompt-golf-qwen-to-llama-nothink`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink)** (thinking=OFF, hero) — [demo CSV](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/blob/main/evals/qwen_to_llama_demo.csv)
 - 🅰️ **[`prompt-golf-qwen-to-llama`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama)** (thinking=ON variant) — [demo CSV](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama/blob/main/evals/qwen_to_llama_demo.csv)
 - 🎛️ **[`prompt-golf-grpo-1.5b`](https://huggingface.co/rishabh16196/prompt-golf-grpo-1.5b)** (Qwen→Qwen control) — [demo CSV](https://huggingface.co/rishabh16196/prompt-golf-grpo-1.5b/blob/main/evals/qwen_to_qwen_demo.csv)
+- 🔁 **[`prompt-golf-multistep-llama`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama)** (multi-turn, 3 turns/episode) — [base eval](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/blob/main/evals/eval_base.jsonl) · [trained eval](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/blob/main/evals/eval_trained.jsonl)
+
+### The multi-turn variant: same agent, 3 turns to get it right
+
+The hero is single-step — the agent writes one prompt and the episode ends. Multi-turn loosens that. We ran a 3-turn variant where the agent sees its prior prompts plus per-example feedback on a *separate* feedback slice (2 examples), then the **final-turn** prompt is judged on a held-out 4-example scoring slice. Same task bank. Same target. Trained with a hand-rolled trajectory-level GRPO (`train_grpo_multistep.py`) for 150 steps × 8 trajectories × 3 turns.
+
+| | Single-step hero | Multi-step (3 turns) |
+|---|---|---|
+| Trained accuracy | 0.523 | **0.576** |
+| Trained reward | +0.426 | **+0.440** |
+| Mean tokens | **35** | 43.7 |
+| Trained beats untrained on | — | 29 / 90 tasks |
+
+Six points of accuracy and a slight reward gain, paid for with ~25% more tokens. But the average hides the interesting structure — **multi-step is a conditional improvement, not a strict upgrade**:
+
+| Category | Multi-step wins | Multi-step losses |
+|---|---|---|
+| `reasoning_tough` | **5 / 10** | 0 |
+| `classification_tough` | **7 / 10** | 2 |
+| `extraction_tough` | 4 / 10 | 4 (mixed) |
+| `policy_compression` | 1 / 3 (`policy_content_moderation` 0.00 → **0.67**) | 1 (`policy_finreg_communication_review` 17 → 112 tokens, still 0.00) |
+| `format` | 2 / 8 | **5 / 8** |
+
+Top single-task wins:
+- `tough_policy_stance`: 0.00 → **1.00** (+0.98 reward)
+- `tough_syllogism_check`: 0.00 → **1.00** (+0.97)
+- `sentiment_basic`: 0.00 → **1.00** (+0.93)
+- `json_key_ordering`: 0.11 → **1.00** (+0.89)
+- `tough_contract_obligation`: 0.06 → **0.89** (+0.69; 43 → 117 tokens)
+- `policy_content_moderation`: 0.00 → **0.67** — multi-step *unlocked* a previously dead policy task by using turn 2/3 to refine the categorization prompt
+
+Where it hurts: format-strict tasks where short single-shot prompts already win. `format_uppercase` goes 9 → 24 tokens with no accuracy gain. `format_three_bullets` regresses 1.00 → 0.92. The agent uses its turn-2 / turn-3 budget to bloat prompts that didn't need bloating.
+
+**The intuition:** multi-turn relaxes length pressure because the agent has room to debug across turns. That helps tasks where the agent needs reasoning room (tough reasoning, tough classification, complex extraction, policy-style compression). It hurts tasks where the optimal answer is "just say the right 8 words." We predicted this exact split in the v3 design plan before the run completed — it's a clean confirmation that multi-turn isn't a free upgrade, it's a different operating point on the accuracy/length curve.
+
+**Operationally:** single-step is still the better default for inference-cost-sensitive deployments. Multi-step is the right pick when accuracy ceilings matter more than token count — and especially when individual tasks reward step-by-step refinement.
 
 ---
 
