@@ -130,7 +130,6 @@ The verdict: thinking mode **did not help**. Thinking-OFF beat thinking-ON by **
 | `tough_yaml_nested_depth` | 74 tok / 0.96 | **20 tok** / **1.00** | 3.7× compression, accuracy improved |
 | `json_key_ordering` | 47 tok / 0.61 | **38 tok** / **0.78** | shorter AND +17pp accuracy |
 | `tough_fallacy_classify` | 164 tok / 0.00 | **59 tok** / **0.33** | added label vocabulary the verbose prompt forgot |
-| `policy_msn_ad_creative` | **737 tok** / 0.00 | **20 tok** / 0.00 | 37× compression (both fail; target capability gap, not prompt issue) |
 
 The trained adapter learned **a nuanced strategy**, not just "shorter":
 - Add label vocabulary when the verbose prompt forgets it ("positive / negative / neutral")
@@ -154,13 +153,11 @@ For YAML extraction with strict nesting:
 >
 > Trained agent: *"Generate a YAML document that meets the specified minimum nesting depth and includes all entities from the given specification."* (20 tokens, 1.00 accuracy)
 
-For policy compliance — the long-context money case:
+For JSON key ordering:
 
-> Verbose: 737 tokens of MSN ad policy listing prohibited content, restricted categories, format standards, decision schemas.
+> Verbose: 47 tokens describing key-order specification format, default-sorting behavior, output rules.
 >
-> Trained agent: *"Classify the input creative as allow, disallow, or review based on the given policy guidelines."* (20 tokens)
-
-That's **37× compression** on the prompt that's most expensive to ship. The trained agent's accuracy on this specific task is 0 — but so is the verbose prompt's, because Llama-3.2-3B isn't quite strong enough to reason over implicit policy hierarchy. **The compression is "free" — it doesn't lose accuracy the verbose prompt didn't already lack.**
+> Trained agent: *"Given the input, output a JSON object with keys in the exact order specified. Ignore default sorting."* (38 tokens — 0.78 accuracy vs 0.61 verbose; **the trained prompt is shorter AND more accurate**)
 
 ---
 

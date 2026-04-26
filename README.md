@@ -63,9 +63,11 @@ A Qwen3-1.7B agent (trained via TRL GRPO) learns to write **35-token prompts** t
 | Untrained Qwen3-1.7B | 0.48 | ~38 |
 | **Trained Qwen3-1.7B + LoRA** | **0.52** | **35** |
 
-→ **80% accuracy retention at 55% of the verbose token count.**  Peak compression: **37× on long-context policy tasks** (e.g. a 737-token MSN ad-creative policy → a 20-token classifier prompt).
+→ **80% accuracy retention at 55% of the verbose token count.**
 
 The trained prompt **beats the human verbose prompt on 48 of 87 tasks (55%)** under the same rubric (`raw_score − 0.5·baseline − 0.002·tokens`). On the rest, the accuracy drop on hard tasks outweighs the length savings — those are the cases where the trained agent compressed too aggressively to keep up with Llama's verbose-prompt capability ceiling.
+
+📊 **Demo CSV:** [`evals/qwen_to_llama_demo.csv`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/blob/main/evals/qwen_to_llama_demo.csv) — 90 rows × verbose / untrained / trained prompts side by side, with per-task accuracy + reward-advantage columns.
 
 ---
 
@@ -100,6 +102,8 @@ Same agent (Qwen3-1.7B + LoRA) but target is also Qwen3-1.7B. Different framing:
 
 Qwen target's weakness makes this the easier comparison to "win" — the trained agent's compressed prompts beat verbose on 80% of tasks because verbose itself is failing. Cross-family Llama target is a much harder bar to clear, but the absolute accuracy is far higher.
 
+📊 **Demo CSV:** [`evals/qwen_to_qwen_demo.csv`](https://huggingface.co/rishabh16196/prompt-golf-grpo-1.5b/blob/main/evals/qwen_to_qwen_demo.csv)
+
 ### Cross-family thinking=ON variant
 
 Identical training setup but with Qwen3's `<think>...</think>` chat template enabled.
@@ -113,6 +117,8 @@ Identical training setup but with Qwen3's `<think>...</think>` chat template ena
 | Mean tokens | **35** | 46 |
 
 OFF wins on reward and compression; ON wins on accuracy by 1.6pp at a 30% token cost. We ship OFF as the default; ON is a different operating point on the accuracy/length frontier.
+
+📊 **Demo CSV:** [`evals/qwen_to_llama_demo.csv`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama/blob/main/evals/qwen_to_llama_demo.csv)
 
 ---
 
