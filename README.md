@@ -86,6 +86,24 @@ Multi-turn (`turn_limit > 1`) splits the test pool into a 2-example feedback sli
 
 ---
 
+## Scorers
+
+Each task picks one of 21 scorers from [`server/scorer.py`](./server/scorer.py). The scorer takes the target's output + the task's expected output and returns a value in `[0, 1]`. Per-task score is the mean across held-out test examples.
+
+| Family | Scorers | What they check |
+|---|---|---|
+| **Exact / membership** | `exact_label`, `contains_label`, `contains_all_substrings`, `uppercase_match` | Closed-vocabulary classifiers; "must include these substrings"; case-strict rewrites |
+| **Numeric** | `numeric_match`, `word_count_exact` | Last numeric token within tolerance; word count exactly N |
+| **JSON / YAML** | `json_contains_fields`, `valid_json_object`, `json_key_order`, `valid_yaml_depth` | Structural extraction; required keys/values; key ordering; YAML nesting depth |
+| **Format-strict** | `three_bullets`, `acrostic_match`, `avoid_letter`, `ends_question`, `terminal_output_pattern` | Exactly 3 bullets; first letters spell a word; output avoids a letter; ends with `?`; terminal-session shape |
+| **Multi-step / language** | `stepwise_math`, `translation_match`, `selective_translate` | Numbered steps + numeric answer; token-F1 vs reference; partial-translation rules |
+| **Safety** | `refusal_score` | Detects whether the output is a refusal (matches expected refuse / comply label) |
+| **LLM judge** (Qwen3-8B 8-bit) | `judge_criteria`, `judge_vs_expected` | Free-form persona / reasoning / Yoda-syntax tasks where regex can't grade. Judge returns a score on the first line; deterministic decoding. |
+
+The scorer is fixed per task and never seen by the agent — the agent has to infer from train examples + task description what gets graded. New scorers add to `SCORERS` registry at the bottom of `scorer.py`.
+
+---
+
 ## Variants
 
 ### Same-family control: Qwen→Qwen
