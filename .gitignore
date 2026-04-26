@@ -18,3 +18,4 @@ checkpoints/
 wandb/
 runs/
 .ipynb_checkpoints/
+before_after_prompts.csv

@@ -29,6 +29,7 @@ tags:
 - 📊 **Training dashboard (Trackio):** https://huggingface.co/spaces/rishabh16196/prompt-golf-trackio
 - 🐙 **GitHub mirror:** https://github.com/rishabh16196/prompt_golf_env
 - 🛠️ **Training pipeline:** [`training/`](https://github.com/rishabh16196/prompt_golf_env/tree/main/training) — full GRPO trainers, eval harness, profilers, HF Jobs launchers
+- 📖 **How to train end-to-end:** [`training/TRAINING.md`](./training/TRAINING.md) — step-by-step recipe to reproduce hero + multi-step + evals + plots
 - 📝 **Blog post:** [`BLOG_POST.md`](./BLOG_POST.md)
 
 ### Trained adapters & data
@@ -42,14 +43,19 @@ tags:
 
 ### Training pipeline ([`training/`](https://github.com/rishabh16196/prompt_golf_env/tree/main/training))
 
+> **📖 Reproduction recipe: [`training/TRAINING.md`](./training/TRAINING.md)** — end-to-end steps for hero + multi-step training, evals, plots, demo CSV, Trackio replay.
+
 | File | Role |
 |---|---|
-| [`training/train_grpo.py`](./training/train_grpo.py) | TRL GRPO single-step trainer |
+| [`training/TRAINING.md`](./training/TRAINING.md) | Step-by-step reproduction recipe (start here) |
+| [`training/train_grpo.py`](./training/train_grpo.py) | TRL GRPO single-step trainer (the hero recipe) |
+| [`training/train_grpo_multistep.py`](./training/train_grpo_multistep.py) | Trajectory-level GRPO for 3-turn episodes |
 | [`training/eval_before_after.py`](./training/eval_before_after.py) | base + trained-adapter eval harness |
 | [`training/profile_baseline.py`](./training/profile_baseline.py) | per-task target-capability profiler |
 | [`training/build_before_after_csv.py`](./training/build_before_after_csv.py) | merge eval JSONLs into the demo CSV |
+| [`training/make_plots.py`](./training/make_plots.py) | reward / length / breakdown curves from `train_metrics.jsonl` |
 | [`training/replay_to_trackio.py`](./training/replay_to_trackio.py) | post-hoc replay of `train_metrics.jsonl` into the Trackio dashboard Space |
-| [`training/hf_job_train.sh`](./training/hf_job_train.sh) / [`hf_job_eval.sh`](./training/hf_job_eval.sh) / [`hf_job_profile.sh`](./training/hf_job_profile.sh) | HuggingFace Jobs launchers |
+| [`training/hf_job_train.sh`](./training/hf_job_train.sh) / [`hf_job_train_multistep.sh`](./training/hf_job_train_multistep.sh) / [`hf_job_eval.sh`](./training/hf_job_eval.sh) / [`hf_job_profile.sh`](./training/hf_job_profile.sh) | HuggingFace Jobs launchers |
 
 ---
 
