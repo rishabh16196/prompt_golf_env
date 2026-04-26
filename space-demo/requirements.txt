@@ -2,11 +2,9 @@ torch>=2.1
 transformers>=4.45,<5.0
 peft>=0.13
 accelerate>=0.34
-# huggingface_hub 1.x removed HfFolder; gradio still imports it. Pin <1.0
-# until both ecosystems converge.
-huggingface_hub>=0.26,<1.0
-gradio==4.44.0
-# Pin jinja2 — gradio 4.x cache machinery breaks on jinja2 3.1.5+ with
-# "unhashable type: dict" on TemplateResponse.
-jinja2>=3.1.0,<3.1.5
+huggingface_hub>=0.26
+# gradio 5.x uses the new Starlette API and handles hub 1.x cleanly.
+# The 4.x pins kept hitting templates.TemplateResponse() positional-args
+# breakage on starlette ≥ 0.40.
+gradio>=5.0
 sentencepiece
