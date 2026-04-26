@@ -73,7 +73,9 @@ One episode = one task = one prompt. Single-turn, conceptually simple:
 3. The env prepends that prompt to ~6 *hidden* test inputs, runs the **frozen target LLM** on each, scores the outputs.
 4. Reward = `raw_task_score − 0.5·baseline − 0.002·tokens − leakage_overlap²`, clipped.
 
-The held-out test inputs are **never shown to the agent**. An n-gram leakage detector zeros the reward if the agent tries to paste held-out content into its prompt. Multi-turn mode (`turn_limit > 1`) splits the test pool into a small *feedback* slice (revealed across turns with target outputs) and a held-out *scoring* slice (only the final-turn prompt is judged).
+The held-out test inputs are **never shown to the agent**. An n-gram leakage detector zeros the reward if the agent tries to paste held-out content into its prompt.
+
+**Multi-turn is supported.** Single-step is the simplest framing, but with `turn_limit > 1` the env splits the test pool into a 2-example *feedback slice* (revealed across turns, with the target's outputs so far) and a 4-example *scoring slice* (only the final-turn prompt is judged). The agent sees its prior prompts + per-example target feedback in the user message — it can debug its prompt across turns without ever seeing the inputs that grade it. We trained a 3-turn variant; **its results sit alongside the single-step hero in [Results](#results) below**.
 
 ```
                     ┌─────────────────────────┐
@@ -175,14 +177,6 @@ Reproduce with:
 ```bash
 PUSH_TO_HUB=your-user/your-repo bash training/hf_job_train.sh
 ```
-
-A few practical things that mattered:
-
-**Pre-flight capability profiling is non-negotiable.** Before committing GPU hours, we ran each task with the verbose hand-written description and recorded `description_baseline` per task. Tasks where the verbose prompt also fails produce zero gradient (no GRPO group variance) and dilute the budget. Profile first, train second. We dropped tasks the target couldn't solve with *any* prompt — there's nothing for golf to compress *toward* if there's no peak.
-
-**`frac_reward_zero_std` is the diagnostic to watch.** GRPO groups with zero intra-group variance contribute no gradient. The "tough" tier gave the most signal precisely because reward was widely dispersed within each group.
-
-**Format anchors emerge before content compression.** Watching intermediate checkpoints, the agent first discovers that certain trigger tokens — `JSON:`, `psql>`, `Yarrr,` — carry enormous behavioral payload. Content-level compression (dropping ceremonial preamble like *"In this task you will…"*) comes later, around step 200+. The order of capabilities is itself interesting.
 
 ### The thinking-mode A/B that didn't work
 
@@ -321,6 +315,14 @@ We also saw failure modes worth flagging:
 ![Live demo: JSON extraction — accuracy holds but output style regresses](./assets/demo_json_extraction.png)
 
 *JSON extraction task. Both prompts get 1.00 accuracy on the labeled fields. But the verbose prompt's "Must be a single JSON object (curly braces), not a list" constraint produces a clean inline `{"name": "Sanyam", ...}`. The trained agent compressed that constraint away — Llama still produces the right keys, but wraps them in markdown code fences with a "Here's the formatted JSON object:" preamble. **Same accuracy, different downstream parsing burden.** This is the kind of subtle regression the per-row eval CSV is designed to surface — and the kind of thing a length-only reward will systematically miss unless you grade for it.*
+
+### Notes on training (for the curious)
+
+Three things mattered in practice if you want to reproduce the run cleanly:
+
+- **Pre-flight capability profiling.** We ran each task with the verbose prompt first and recorded `description_baseline` per task. Tasks where verbose also fails produce zero gradient (no GRPO group variance) and dilute the budget. We dropped them from the active task pool.
+- **`frac_reward_zero_std` is the diagnostic.** GRPO groups with zero intra-group reward variance contribute no gradient. The "tough" tier gave the most signal precisely because reward was widely dispersed within each group.
+- **Format anchors emerge before content compression.** The agent first discovers high-payload trigger tokens (`JSON:`, `psql>`, `Yarrr,`) — content-level compression (dropping ceremonial preamble like *"In this task you will…"*) comes later, around step 200+.
 
 ---
 

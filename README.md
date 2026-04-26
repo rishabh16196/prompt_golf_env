@@ -127,7 +127,7 @@ Each episode is one task:
 3. Env prepends the prompt to ~6 held-out test inputs, runs the **frozen target LLM**, scores each output with the task scorer.
 4. `reward = raw_task_score − 0.5·baseline − 0.002·tokens − leakage_overlap²`, clipped to `[−0.5, 1.3]`.
 
-Multi-turn (`turn_limit > 1`) splits the test pool into a 2-example feedback slice (revealed across turns) and a 4-example scoring slice (only the final-turn prompt is judged). The agent sees its prior prompts + per-example target outputs in the user message, so it can debug across turns without leaking the inputs that judge it.
+**Multi-turn is supported.** With `turn_limit > 1`, the env splits the test pool into a 2-example *feedback slice* (revealed across turns with target outputs) and a 4-example *scoring slice* (only the final-turn prompt is judged). The agent sees its prior prompts + per-example target outputs in the user message, so it can debug across turns without leaking the inputs that grade it. We trained a 3-turn variant — see the [per-category breakdown above](#per-category-breakdown-hero-vs-multistep-90-tasks) for results.
 
 90 hand-crafted tasks across 4 tiers: 20 v1 (easy/medium classification, extraction, format), 15 v2 (hard — acrostic, YAML depth, persona), 52 tough (logical fallacy ID, FINRA review, Yoda-with-constraint), 3 long-context policy compression (MSN ad policy, content moderation, broker-dealer review).
 
