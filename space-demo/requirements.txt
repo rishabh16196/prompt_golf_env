@@ -5,8 +5,8 @@ accelerate>=0.34
 # huggingface_hub 1.x removed HfFolder; gradio still imports it. Pin <1.0
 # until both ecosystems converge.
 huggingface_hub>=0.26,<1.0
-gradio>=4.40,<5.0
+gradio==4.44.0
+# Pin jinja2 — gradio 4.x cache machinery breaks on jinja2 3.1.5+ with
+# "unhashable type: dict" on TemplateResponse.
+jinja2>=3.1.0,<3.1.5
 sentencepiece
-# Python 3.13 removed audioop from stdlib; pydub (pulled by gradio)
-# imports it. audioop-lts is the maintained drop-in replacement.
-audioop-lts; python_version >= "3.13"

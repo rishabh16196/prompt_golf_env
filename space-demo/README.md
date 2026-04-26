@@ -9,6 +9,7 @@ app_file: app.py
 pinned: false
 license: mit
 hardware: t4-small
+python_version: "3.11"
 short_description: "RL-compressed prompts for Llama 3.2 (Qwen agent)"
 tags:
   - prompt-engineering
