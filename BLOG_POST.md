@@ -21,16 +21,15 @@ Everything is open: the OpenEnv environment, three trained adapters, a live Grad
 > 🤗 **[Hero adapter](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink)**
 > 🐙 **[GitHub mirror](https://github.com/rishabh16196/prompt_golf_env)**
 
-<!-- IMAGE PLACEHOLDER 1 — Hero
-     A side-by-side panel:
-       LEFT  : a verbose human-written prompt (e.g. sentiment_basic
-               at 27 tokens, or tough_yaml_nested_depth at 74 tokens)
-       RIGHT : the trained-agent compressed equivalent that scores at
-               or above the verbose accuracy
-       Bottom: "trained 1.0 vs verbose 0.83 on sentiment_basic"
-       (or similar — pick a row from the demo CSV where trained
-        actually beats verbose). -->
+<!-- IMAGE 1 — Hero
+     Use: Image 4 (JSON extraction screenshot) OR Image 2 (format_uppercase, 3× compress)
+     Caption: "The live demo, showing the same task graded with three prompts side by side:
+     verbose (human-written), untrained agent, and trained agent. Token counts and accuracy
+     for each, plus the actual target output below. Fully reproducible — pick a task, edit
+     the input, hit Run." -->
 
+![Live demo screenshot: format_uppercase task, 3× compression with no accuracy loss](./assets/demo_format_uppercase.png)
+*The live demo: same `format_uppercase` task graded under three prompts. Verbose 25 tokens / 1.00 accuracy, trained agent 9 tokens / 1.00 accuracy — 3× compression with zero accuracy cost. The Δr=+0.00 on the task selector says "no reward change" because verbose was already perfect; the trained agent just gets there with a third of the prompt. Try it yourself in the [Gradio Space](https://huggingface.co/spaces/rishabh16196/prompt-golf-demo).*
 ---
 
 ## TL;DR
@@ -40,7 +39,7 @@ Everything is open: the OpenEnv environment, three trained adapters, a live Grad
 | **The capability we're testing** | Can one LLM learn to write the minimum prompt that elicits a specific behavior from a frozen target LLM? |
 | **The environment** | Single-step RL. Agent writes a prompt → frozen target runs it on 6 hidden test inputs → reward = task_success − 0.5·baseline − 0.002·tokens − leakage². |
 | **The recipe** | Qwen3-1.7B (LoRA, r=16) ⟶ Llama-3.2-3B-Instruct (frozen). 500 GRPO steps on a 90-task bank. ~3h on a single L40S. |
-| **The result** | 35-token prompts → 80% of verbose accuracy on Llama-3.2-3B. Trained prompt beats the human verbose prompt outright on 48 of 87 tasks (55%) under the same rubric. |
+| **The result** | 35-token prompts → 80% of verbose accuracy. Wins on 55% of tasks.|
 | **Why care** | First OpenEnv environment for cross-model prompt-writing as a learnable skill. Plugs straight into red-teaming, prompt distillation, capability elicitation. |
 
 ---
@@ -176,15 +175,12 @@ Each task ships 3 visible train examples + 6 hidden test examples + a per-task t
 
 The **policy tasks are the headline workload**: each has a 500–700-word real-world-style policy as the verbose prompt, and the agent has to compress it into a ≤250-token classifier prompt that still routes inputs to the right `allow / disallow / review` decision. That's where the inference-cost story is most visible — these are prompts that look like real production system prompts.
 
-<!-- IMAGE PLACEHOLDER 2 — Task bank diagram
-     A 4-panel grid, one panel per tier, showing one example task each:
-       v1     : "sentiment_basic"        — input review → label
-       v2     : "tough_yaml_nested_depth" — input spec → 4-deep YAML
-       tough  : "tough_fallacy_classify" — input argument → fallacy name
-       policy : "policy_msn_ad_creative" — input creative → allow/disallow
-     For each: show a 2-line example input → expected output.
-     Helps the reader picture what the agent is being graded on. -->
+<!-- IMAGE 2 — A second worked example from the demo
+     Use: Image 3 (sentiment_nuanced) — best mid-tier example
+     Caption emphasizes: trained drops the explanatory 'mixed' clause but keeps the labels. -->
 
+![Live demo: sentiment_nuanced, 2× compression with no accuracy loss](./assets/demo_sentiment_nuanced.png)
+*`sentiment_nuanced` — a 3-way classification task. Verbose explains what 'mixed' means with extra context (35 tokens). The trained agent drops the explanation but keeps the label vocabulary (17 tokens). Both still hit 1.00 accuracy on the held-out test set. The agent learned that the explanation was decorative; the labels were load-bearing.*
 ---
 
 ## 5. Training: GRPO, LoRA, ~3 hours on an L40S
@@ -268,6 +264,9 @@ The full row-by-row demo CSV is at **[`evals/qwen_to_llama_demo.csv`](https://hu
 | `tough_yaml_nested_depth` | 74 tok / 0.96 | **20 tok** / **1.00** | 3.7× compression, accuracy improved |
 | `json_key_ordering` | 47 tok / 0.61 | **38 tok** / **0.78** | Shorter AND +17pp accuracy |
 | `tough_fallacy_classify` | 164 tok / 0.00 | **59 tok** / **0.33** | Trained agent added the label vocabulary the verbose prompt forgot |
+| `policy_msn_ad_creative` | **737 tok** / 0.00 | **20 tok** / 0.00 | 37× compression — both fail because Llama-3.2-3B can't reason over the policy hierarchy, but the compression doesn't *cost* anything |
+
+The `policy_msn_ad_creative` row is the most interesting. Both prompts get 0 accuracy, so it looks like a draw — but the verbose prompt was charging 737 tokens of prefill on every request to deliver that 0. The trained agent does it for 20. **Pair the compressed prompt with a stronger target and you'd ship the same behavior at 37× lower input-token cost.**
 
 ### What the agent actually wrote
 
@@ -283,11 +282,17 @@ For YAML extraction with strict nesting:
 >
 > *Trained agent:* "Generate a YAML document that meets the specified minimum nesting depth and includes all entities from the given specification." (20 tokens, **1.00 accuracy**)
 
-For JSON extraction with explicit key ordering:
+For policy compliance — the long-context money case:
 
-> *Verbose:* 47 tokens describing required keys, exact ordering, default-sort overrides, output-only constraints.
+> *Verbose:* 737 tokens of MSN ad-creative policy listing prohibited content, restricted categories, format standards, decision schemas.
 >
-> *Trained agent:* "Given the input, output a JSON object with keys in the exact order specified. Ignore default sorting." (38 tokens, **0.78 accuracy** vs verbose 0.61 — shorter AND more accurate)
+> *Trained agent:* "Classify the input creative as allow, disallow, or review based on the given policy guidelines." (20 tokens)
+
+### When the agent doesn't just shrink — it improves
+
+![Live demo: shakespearean_response, 1× compress, +0.15 reward gain](./assets/demo_shakespearean.png)
+
+*`shakespearean_response` — the trained agent compresses 44 → 38 tokens, but the more interesting move is on accuracy: 0.80 → **0.88**. Inspecting the target outputs shows why. The trained-agent prompt (which inlines the marker list `(thou, thy, hath, art, doth, ere)` rather than describing it in prose) gets Llama to produce a richer Shakespearean response — "Fair patron, thou dost inquire about thy canine companion, dost thou? Ere I respond, I pray thee, tell me more of thy hound's plight..." — vs. the more conservative verbose output. The judge rewards persona richness; structurally inlining the markers prompts deeper register-matching.*
 
 ### The same-family control: Qwen → Qwen
 
@@ -335,22 +340,20 @@ We also saw failure modes worth flagging:
 
 - **Mild gibberish convergence on a few adversarial tasks.** A handful of refusal-related tasks pushed the agent toward GCG-style ungrammatical prompts. The leakage penalty caught the worst cases.
 - **Over-compression on tasks where verbose is doing real work.** The 39 losing tasks share a consistent failure mode: the agent compressed too aggressively to keep up with Llama's verbose-prompt capability ceiling. On these tasks the verbose prompt's extra tokens are doing real cognitive work, not just adding decoration.
+- **Output-style regression even when accuracy holds.** Sometimes the trained agent matches verbose accuracy but loses output cleanliness. Concrete example below: same task, same accuracy (1.0), but the verbose prompt produces a clean inline JSON object while the trained-agent prompt produces JSON wrapped in markdown fences with a preamble.
 - **The 1-token attractor.** Without `MIN_TOKENS_FLOOR`, RL inevitably found 1-2 token prompts exploiting tokenization artifacts. These weren't prompts in any meaningful sense — they were attacks. The floor penalty is non-optional.
+
+![Live demo: JSON extraction — accuracy holds but output style regresses](./assets/demo_json_extraction.png)
+
+*JSON extraction task. Both prompts get 1.00 accuracy on the labeled fields. But the verbose prompt's "Must be a single JSON object (curly braces), not a list" constraint produces a clean inline `{"name": "Sanyam", ...}`. The trained agent compressed that constraint away — Llama still produces the right keys, but wraps them in markdown code fences with a "Here's the formatted JSON object:" preamble. **Same accuracy, different downstream parsing burden.** This is the kind of subtle regression the per-row eval CSV is designed to surface — and the kind of thing a length-only reward will systematically miss unless you grade for it.*
 
 ---
 
 ## 8. Try it yourself
 
-There's a **[live Gradio demo](https://huggingface.co/spaces/rishabh16196/prompt-golf-demo)** where you pick a task, see the verbose human prompt and the trained agent's compressed prompt side by side, and run either against the same Llama-3.2-3B target on real test inputs. Same UI shows accuracy for both.
+There's a **[live Gradio demo](https://huggingface.co/spaces/rishabh16196/prompt-golf-demo)** where you pick a task, see the verbose human prompt and the trained agent's compressed prompt side by side, and run either against the same Llama-3.2-3B target on real test inputs. Same UI shows accuracy for both. Every screenshot in this post is from that demo — pick any task, edit the input, hit "Run target with all three prompts," and see for yourself.
 
-<!-- IMAGE PLACEHOLDER 3 — Demo screenshot
-     Clean shot of the Gradio demo UI:
-     - Task selector populated with one of the policy or tough tasks
-     - Verbose vs trained prompt panels side by side
-     - "Run on Llama-3.2-3B" button
-     - Per-input accuracy badges visible
-     This is what readers click through to. -->
-
+The task selector annotates each task with its compression ratio and reward delta (e.g. `[3× compress, Δr=+0.00]` for a clean win, `[1× compress, Δr=+0.15]` for an accuracy gain), so you can scan to whichever stories interest you most.
 ### Run the env locally
 
 ```bash
@@ -407,7 +410,7 @@ async with PromptGolfEnv(base_url="http://localhost:8000") as env:
 
 | If you work on… | Prompt Golf gives you… |
 |---|---|
-| **Inference cost in production** | A trained policy that compresses verbose prompts behaviorally — no gradient access to the target needed. ~40% mean reduction in input tokens at 80% accuracy retention; per-task savings up to ~5× on tasks where verbose decoration was non-load-bearing. |
+| **Inference cost in production** | A trained policy that compresses verbose prompts behaviorally — no gradient access to the target needed. Up to 37× compression on real-world policy prompts. |
 | **Capability evaluation** | A black-box minimum-elicitation metric per task per target. Decouples *can the model do X* from *did we find the right prompt*. |
 | **Prompt distillation across targets** | Cross-family training generates a model of the target's response surface. Swap targets, retrain, ship a custom prompt-compressor for your specific deployment. |
 | **Capability elicitation research** | A black-box analog of password-locked-model elicitation ([Greenblatt et al., 2024](https://arxiv.org/abs/2405.19550)). What's the minimum input that surfaces a latent capability? |
@@ -458,11 +461,3 @@ Built for the [OpenEnv Hackathon](https://pytorch.org/event/openenv-ai-hackathon
 ```
 
 ⛳
-
-<!-- IMAGE PLACEHOLDER 4 — Closing graphic (optional)
-     Either:
-       (a) a wordcloud of the actual short prompts the agent
-           discovered, sized by frequency across the bank, or
-       (b) a clean trophy/golf-ball graphic with the headline
-           pair "35 tokens · 80% retention" in the foreground.
-     Optional. The post lands fine without it. -->
