@@ -9,7 +9,7 @@ app_file: app.py
 pinned: false
 license: mit
 hardware: t4-small
-short_description: "Compressed prompts for Llama 3.2 — a Qwen agent learned to write 12-token prompts that match 250-token human ones"
+short_description: "RL-compressed prompts for Llama 3.2 (Qwen agent)"
 tags:
   - prompt-engineering
   - rl
