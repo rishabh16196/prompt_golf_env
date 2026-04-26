@@ -6,6 +6,37 @@ End-to-end recipe for reproducing the Prompt Golf adapters and demo CSVs from sc
 
 ---
 
+## What the `hf_job_*.sh` launchers actually do
+
+Each `.sh` is a thin wrapper around the [`hf jobs`](https://huggingface.co/docs/huggingface_hub/guides/jobs) CLI — HuggingFace's managed-GPU runner. The pattern is identical across all four:
+
+1. **Read config from env vars** (with sensible defaults) — model names, destination repo, hyperparameters, GPU flavor (`l40sx1` / `l4x1` / `t4-medium`), timeout, etc.
+2. **Compose a long bash command** to run *inside* the remote container:
+   - `apt-get install` system deps (git, curl, build tools).
+   - `pip install` the **OpenEnv-official torch/transformers/trl pin** — this is finicky (torch ≥2.8, transformers==4.56.2, trl==0.22.2). That's why the install lives in the `.sh`, not in `requirements.txt`.
+   - `git clone` this repo at `${REPO_REF}` and `pip install -e .` it.
+   - Run the actual Python entry point (`train_grpo.py` / `eval_before_after.py` / `profile_baseline.py`).
+3. **Submit it via `hf jobs run`** with `--flavor`, `--timeout`, `--secrets HF_TOKEN`, `--detach`. Returns a job ID and runs in the background on HF's GPUs.
+
+| Script | Wraps | Time | Purpose |
+|---|---|---|---|
+| [`hf_job_profile.sh`](./hf_job_profile.sh) | `profile_baseline.py` | ≈30m on L4 | Verbose-prompt accuracy per task on a given target. No agent, no judge — cheap. |
+| [`hf_job_train.sh`](./hf_job_train.sh) | `train_grpo.py` | ≈3h on L40S | Hero recipe — TRL GRPO single-step, 500 steps × 8 generations. Pushes adapter + plots + metrics. |
+| [`hf_job_train_multistep.sh`](./hf_job_train_multistep.sh) | `train_grpo_multistep.py` | ≈3.5h on L40S | 3-turn variant — hand-rolled trajectory-level GRPO. Reads `SFT_ADAPTER` to warm-start from a hero adapter. |
+| [`hf_job_eval.sh`](./hf_job_eval.sh) | `eval_before_after.py` | 2 × ≈15m on L40S | Takes `base \| trained \| both` as `$1`. `both` submits two jobs (with and without `--adapter`). |
+
+**Why this layer exists at all:**
+- The "compose the command that runs inside the container" step is a 30-line bash heredoc with very particular pip-install ordering. You don't want to retype that from memory each run.
+- Defaults make `bash training/hf_job_train.sh` a one-liner. Customize via env-var overrides (`PUSH_TO_HUB=... TARGET_MODEL=... bash ...`).
+- Same `.sh` works locally and on CI — they don't run anything on your machine, they only **dispatch** to HF's cluster.
+
+**What the `.sh` files don't do:**
+- Don't wait for the job to finish — `--detach` returns immediately. Monitor with `hf jobs ps -a` and `hf jobs logs <id> --follow`.
+- Don't run on your laptop. No local GPU required.
+- The CSV-builder (`build_before_after_csv.py`), plot-renderer (`make_plots.py`), and Trackio-replayer (`replay_to_trackio.py`) **don't** have `.sh` wrappers — they're cheap CPU-only scripts you run locally after the GPU jobs finish.
+
+---
+
 ## 0. Prerequisites
 
 - **HuggingFace account + token** with write access to a destination namespace (yours, not `rishabh16196/...`). Login locally:
