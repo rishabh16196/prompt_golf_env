@@ -447,15 +447,16 @@ def generate_three(verbose_prompt: str, base_prompt: str, trained_prompt: str,
 
 def compress_and_run(description: str, budget_str: str, test_input: str):
     """Custom-task tab: take a free-form task description + test input,
-    have the trained agent emit a compressed prompt, then run the target.
-    """
+    have the trained agent emit a compressed prompt, then run the target
+    with both the user's verbose description AND the compressed prompt
+    so the user can see the side-by-side."""
     description = (description or "").strip()
     test_input = (test_input or "").strip()
     if not description:
-        return "", "", "", "(describe your task above)"
+        return "", "", "", "", "", "(describe your task above)"
     if not load_agents():
-        return "", "", "", ("agent loading disabled — set "
-                            "DEMO_AGENT_ADAPTER to enable this tab")
+        return "", "", "", "", "", ("agent loading disabled — set "
+                                    "DEMO_AGENT_ADAPTER to enable this tab")
     try:
         budget = int(budget_str)
     except (ValueError, TypeError):
@@ -488,20 +489,24 @@ def compress_and_run(description: str, budget_str: str, test_input: str):
     t1 = time.time()
     trained_prompt = extract_prompt(raw)
     trained_tok = count_tokens(trained_prompt)
+    verbose_tok = count_tokens(description)
 
     if test_input:
-        outs = run_target_batch([trained_prompt], test_input)
-        target_output = outs[0]
+        # One batched forward pass with both prompts.
+        outs = run_target_batch([description, trained_prompt], test_input)
+        verbose_output, trained_output = outs[0], outs[1]
         t2 = time.time()
         msg = (
             f"agent: {t1-t0:.1f}s  |  target: {t2-t1:.1f}s  |  "
-            f"trained prompt: {trained_tok} tok"
+            f"verbose: {verbose_tok} tok  →  trained: {trained_tok} tok"
         )
     else:
-        target_output = "(enter a test input to run the target)"
-        msg = f"agent: {t1-t0:.1f}s  |  trained prompt: {trained_tok} tok"
+        verbose_output = trained_output = "(enter a test input to run the target)"
+        msg = (f"agent: {t1-t0:.1f}s  |  "
+               f"verbose: {verbose_tok} tok  →  trained: {trained_tok} tok")
 
-    return trained_prompt, str(trained_tok), target_output, msg
+    return (trained_prompt, str(trained_tok), str(verbose_tok),
+            verbose_output, trained_output, msg)
 
 
 # ---------------------------------------------------------------------------
@@ -618,11 +623,13 @@ def build_app() -> gr.Blocks:
                     "Describe a brand-new task, set a token budget, and "
                     "(optionally) a test input. The trained agent will "
                     "compress your description into a short system prompt, "
-                    "then the target runs it on your input. First click "
-                    "loads the agent + LoRA (~6 GB)."
+                    "then the target runs both **your verbose description** "
+                    "AND **the compressed prompt** on your input — so you "
+                    "can see the side-by-side. First click loads the agent "
+                    "+ LoRA (~6 GB)."
                 )
                 custom_desc = gr.Textbox(
-                    label="Describe your task",
+                    label="Describe your task (used as the verbose prompt)",
                     lines=4,
                     placeholder=("e.g. Classify the input email as urgent, "
                                  "normal, or spam. Output one word."),
@@ -640,18 +647,24 @@ def build_app() -> gr.Blocks:
                     variant="primary",
                 )
                 with gr.Row():
-                    with gr.Column(scale=2):
-                        gr.Markdown("### Trained agent prompt")
+                    with gr.Column():
+                        gr.Markdown("### Verbose (your description)")
+                        custom_verbose_tok = gr.Textbox(
+                            label="tokens", interactive=False,
+                        )
+                        custom_verbose_out = gr.Textbox(
+                            label="target output", lines=6, interactive=False,
+                        )
+                    with gr.Column():
+                        gr.Markdown("### Trained agent (compressed)")
                         custom_prompt_out = gr.Textbox(
-                            label="prompt", lines=6, interactive=False,
+                            label="prompt", lines=4, interactive=False,
                         )
                         custom_tok = gr.Textbox(
                             label="tokens", interactive=False,
                         )
-                    with gr.Column(scale=2):
-                        gr.Markdown("### Target output")
                         custom_target_out = gr.Textbox(
-                            label="output", lines=6, interactive=False,
+                            label="target output", lines=6, interactive=False,
                         )
                 custom_status = gr.Textbox(label="status", interactive=False)
 
@@ -689,8 +702,8 @@ def build_app() -> gr.Blocks:
         custom_btn.click(
             compress_and_run,
             inputs=[custom_desc, custom_budget, custom_input],
-            outputs=[custom_prompt_out, custom_tok,
-                     custom_target_out, custom_status],
+            outputs=[custom_prompt_out, custom_tok, custom_verbose_tok,
+                     custom_verbose_out, custom_target_out, custom_status],
         )
         app.load(select_task, inputs=[task_dd], outputs=select_outputs)
 
