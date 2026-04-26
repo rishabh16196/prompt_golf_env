@@ -50,6 +50,12 @@ def parse_args() -> argparse.Namespace:
                         "If omitted, verbose_accuracy is left blank.")
     p.add_argument("--target-model", default="meta-llama/Llama-3.2-3B-Instruct",
                    help="Used to count tokens of the verbose description.")
+    p.add_argument("--min-verbose-accuracy", type=float, default=0.0,
+                   help="Drop tasks where the verbose-prompt accuracy is "
+                        "≤ this value. Default 0.0 (keep everything). Set "
+                        "to e.g. 0.0001 to drop only tasks where the "
+                        "target genuinely fails regardless of prompt — "
+                        "those tasks dilute headline numbers.")
     p.add_argument("--output-csv", default="outputs/before_after_prompts.csv")
     p.add_argument("--push-to-hub", default=None,
                    help="HF model repo id; uploaded as evals/before_after_prompts.csv")
@@ -116,6 +122,38 @@ def main() -> None:
 
     # Union of task ids present in either file (in case of partial runs)
     all_tids = sorted(set(base_rows) | set(trained_rows))
+
+    # Filter on verbose-prompt accuracy floor.
+    # We use the profile CSV's `verbose_accuracy` if available; for tasks
+    # missing from the profile, we fall back to the trained eval's
+    # raw_task_score (since 0 there + 0 on profile = target genuinely
+    # can't do this task).
+    if args.min_verbose_accuracy > 0:
+        kept = []
+        dropped = []
+        for tid in all_tids:
+            v = verbose_acc_map.get(tid)
+            if v is None:
+                # Fall back to trained eval — if BOTH base and trained
+                # got 0, drop it as untrainable on this target.
+                b = base_rows.get(tid, {}).get("raw_task_score", 0) or 0
+                t = trained_rows.get(tid, {}).get("raw_task_score", 0) or 0
+                if max(b, t) <= 0:
+                    dropped.append(tid)
+                    continue
+                kept.append(tid)
+            elif v > args.min_verbose_accuracy:
+                kept.append(tid)
+            else:
+                dropped.append(tid)
+        print(f"[csv] filtered: kept {len(kept)} / {len(all_tids)} tasks "
+              f"(dropped {len(dropped)} where verbose_accuracy ≤ "
+              f"{args.min_verbose_accuracy})", flush=True)
+        if dropped:
+            print(f"[csv]   dropped: {', '.join(dropped[:10])}"
+                  + (f" ...+{len(dropped)-10} more" if len(dropped) > 10 else ""),
+                  flush=True)
+        all_tids = kept
 
     rows_out: List[Dict] = []
     for tid in all_tids:
