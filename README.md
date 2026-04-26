@@ -67,10 +67,10 @@ All numbers below are on the same 90-task bank, evaluated against frozen Llama-3
 |---|---|---|---|---|---|
 | **Verbose** (human-written) | 0.631 | — | 94.2 | (the bar) | You don't have an agent and don't mind paying full token cost. |
 | **Base** (Qwen3-1.7B, no adapter) | 0.464 | — | 37.5 | 4 / 90 | Almost never. Untrained Qwen3 over-thinks the task. |
-| **Hero** (1-step trained) | 0.506 | +0.381 | **38.5** | **63 / 90** | **Default.** Cheapest, wins most often, ~3× shorter than verbose at 80% of its accuracy. |
+| **Hero** (1-step trained) | 0.506 | +0.381 | **38.5** | **63 / 90** | **Default.** Cheapest, wins most often, ≈3× shorter than verbose at 80% of its accuracy. |
 | **Multistep** (3-turn trained) | **0.576** | **+0.440** | 43.7 | 23 / 90 | Nuanced classifiers (`classification_tough` is its sweet spot). When the +6pp accuracy matters more than +5 tokens. |
 
-> **Headline:** Hero retains **80% of verbose accuracy at ~40% of the tokens** and wins per-task on 70% of tasks. Multistep gives back compression for accuracy — only worth it for nuanced classification.
+> **Headline:** Hero retains **80% of verbose accuracy at ≈40% of the tokens** and wins per-task on 70% of tasks. Multistep gives back compression for accuracy — only worth it for nuanced classification.
 
 ### Training curves (hero)
 
@@ -135,7 +135,7 @@ Each episode is one task:
 
 1. `reset(task=...)` → env returns task description + 3 visible train examples + token budget + target's empty-prompt baseline.
 2. Agent outputs a **prompt string** as its action.
-3. Env prepends the prompt to ~6 held-out test inputs, runs the **frozen target LLM**, scores each output with the task scorer.
+3. Env prepends the prompt to 6 held-out test inputs, runs the **frozen target LLM**, scores each output with the task scorer.
 4. `reward = raw_task_score − 0.5·baseline − 0.002·tokens − leakage_overlap²`, clipped to `[−0.5, 1.3]`.
 
 **Multi-turn is supported.** With `turn_limit > 1`, the env splits the test pool into a 2-example *feedback slice* (revealed across turns with target outputs) and a 4-example *scoring slice* (only the final-turn prompt is judged). The agent sees its prior prompts + per-example target outputs in the user message, so it can debug across turns without leaking the inputs that grade it. We trained a 3-turn variant — see the [per-category breakdown above](#per-category-breakdown-hero-vs-multistep-90-tasks) for results.

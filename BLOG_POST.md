@@ -7,7 +7,7 @@ authors:
 
 # Prompt Golf
 
-> *Same accuracy as the human-written prompt at ~55% of the tokens — learned by an RL agent that never saw the target's weights, only its outputs.*
+> *80% of human-written-prompt accuracy at ~40% of the tokens — learned by an RL agent that never saw the target's weights, only its outputs.*
 
 ## How this started
 
@@ -50,7 +50,7 @@ The research question and the ad-tech problem are the same problem from differen
 
 We trained a Qwen3-1.7B **agent** (LoRA + TRL GRPO) to write prompts for a frozen Llama-3.2-3B **target**. Different families on purpose: the agent has no gradient access, no shared tokenizer affordance, no architectural shortcut. Just the same view a human prompt engineer has — *I can see what the target does, I can't see why it does it.*
 
-After 500 GRPO steps on a 90-task bank, the agent compresses verbose human-written prompts (mean ~63 tokens, up to 737 on long-context policy tasks) into **35-token prompts** that retain **80% of the verbose accuracy** and **beat the human prompt outright on 48 of 87 tasks (55%)**. Peak compression: **30× on long-context policy tasks**.
+After 500 GRPO steps on a 90-task bank, the agent compresses verbose human-written prompts (mean ~94 tokens, up to 737 on long-context policy tasks) into **~39-token prompts** that retain **80% of the verbose accuracy**. On a per-task basis, the trained agent's prompt is **the best of three options on 63 of 90 tasks (70%)** — *cheaper and equal-or-better reward* than both the verbose human prompt and the untrained agent. Peak compression: **30× on long-context policy tasks**.
 
 Everything is open: [the env](https://huggingface.co/spaces/rishabh16196/prompt_golf_env), the [trained adapter](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink), the [training pipeline](https://github.com/rishabh16196/prompt_golf_env/tree/main/training), and a [live Gradio demo](https://huggingface.co/spaces/rishabh16196/prompt-golf-demo) where you can play prompts against the same target the agent was trained on. The [demo CSV](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/blob/main/evals/qwen_to_llama_demo.csv) has all 90 tasks × verbose / untrained / trained / accuracy side by side.
 
@@ -59,7 +59,7 @@ Everything is open: [the env](https://huggingface.co/spaces/rishabh16196/prompt_
 | **The capability we're testing** | Can one LLM learn to write the minimum prompt that elicits a specific behavior from a frozen target LLM? |
 | **The environment** | Single-step RL. Agent writes a prompt → frozen target runs it on 6 hidden test inputs → reward = task_success − 0.5·baseline − 0.002·tokens − leakage². |
 | **The recipe** | Qwen3-1.7B (LoRA, r=16) ⟶ Llama-3.2-3B-Instruct (frozen). 500 GRPO steps on a 90-task bank. ~3h on a single L40S. |
-| **The result** | 35-token prompts → 80% of verbose accuracy. Wins on 55% of tasks. |
+| **The result** | ~39-token prompts → 80% of verbose accuracy. Best of three on 70% of tasks. |
 | **Why care** | First OpenEnv environment for cross-model prompt-writing as a learnable skill. Plugs straight into red-teaming, prompt distillation, capability elicitation. |
 
 ---
