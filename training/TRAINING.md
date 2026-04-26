@@ -35,6 +35,39 @@ Each `.sh` is a thin wrapper around the [`hf jobs`](https://huggingface.co/docs/
 - Don't run on your laptop. No local GPU required.
 - The CSV-builder (`build_before_after_csv.py`), plot-renderer (`make_plots.py`), and Trackio-replayer (`replay_to_trackio.py`) **don't** have `.sh` wrappers — they're cheap CPU-only scripts you run locally after the GPU jobs finish.
 
+### Quick start — just run the .sh
+
+For most users, two setup commands and you're dispatching real training jobs:
+
+```bash
+# 1. HF write token (free account; takes 30 seconds)
+hf auth login                                          # paste a write token
+
+# 2. Override the default PUSH_TO_HUB so artifacts go to your namespace
+export PUSH_TO_HUB=your-username/your-adapter-repo
+```
+
+Then any of:
+
+```bash
+bash training/hf_job_profile.sh                        # ≈30m on L4
+bash training/hf_job_train.sh                          # ≈3h on L40S
+bash training/hf_job_eval.sh both                      # 2 × ≈15m on L40S
+SFT_ADAPTER=$PUSH_TO_HUB \
+  bash training/hf_job_train_multistep.sh              # ≈3.5h on L40S
+```
+
+Each call returns a job ID immediately (`hf jobs run --detach`). Monitor with `hf jobs ps -a` and `hf jobs logs <job-id> --follow`.
+
+**Common gotchas before you click run:**
+- **Llama-3.2 is gated.** Accept the license at <https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct> first; the job dies on model-download otherwise. (Approval is usually instant.)
+- **HF Jobs quota.** Free accounts get a small monthly GPU budget; a hero training run burns several hours of it. The script returns a quota error within 30 seconds if you're out — nothing has actually started.
+- **`whoami` rate-limit.** Dispatching 4–5 jobs in rapid succession will lock you out for 5–25 min. Pace dispatches; don't poll-loop.
+- **Default `REPO_URL`** clones `https://huggingface.co/spaces/rishabh16196/prompt_golf_env`. If you've forked the env, override: `REPO_URL=https://huggingface.co/spaces/your-name/your-fork bash ...`.
+- **Default `TARGET_MODEL`** is `meta-llama/Llama-3.2-3B-Instruct`. Override per call: `TARGET_MODEL=microsoft/Phi-3-mini-4k-instruct bash training/hf_job_train.sh`.
+
+That's the whole "user wants to reproduce this" path. The §1–§8 sections below go deeper if you want to understand individual steps, customize hyperparameters, or build the demo CSV / plots / Trackio replay locally after the jobs finish.
+
 ---
 
 ## 0. Prerequisites
