@@ -178,19 +178,26 @@ Reproduce with:
 PUSH_TO_HUB=your-user/your-repo bash training/hf_job_train.sh
 ```
 
-### The thinking-mode A/B that didn't work
+### Multi-step training — warm-start from hero, train across turns
 
-Qwen3 has an optional `<think>...</think>` chat template — free reasoning scratch space before the final output. Hypothesis: free reasoning would let the agent strategize about format anchors before emitting the prompt, since the rubric only counts the *extracted* prompt's tokens. Should be free intelligence.
+The single-step hero is one trainer (`training/train_grpo.py`, vanilla TRL GRPO). The 3-turn variant is a different trainer (`training/train_grpo_multistep.py`), built specifically because TRL's single-step GRPO can't do multi-turn credit assignment cleanly — it expects one prompt → one scalar reward per rollout, but our multi-turn episodes have N prompts and one reward (the final-turn score).
 
-It wasn't. Identical training setup, thinking ON vs OFF:
+The setup that ended up working:
 
-|  | thinking=OFF (hero) | thinking=ON |
-|---|---|---|
-| Trained accuracy | 0.523 | **0.539** |
-| Trained reward | **+0.426** | +0.379 |
-| Mean tokens | **35** | 46 |
+- **Warm-start from the hero adapter.** Cold-starting multi-turn from the LoRA-zero init burned compute on rediscovering single-turn behavior. Initializing with the trained hero weights gave the agent a solid single-turn baseline to refine across turns, and rewards stayed positive from step 1.
+- **Trajectory-level GRPO, hand-rolled.** 8 trajectories per group, each trajectory = 3 sequential turns. The reward signal is the final-turn score (with the same additive rubric: `raw − 0.5·baseline − 0.002·tokens − leak²`). REINFORCE-style policy gradient over the full trajectory's action tokens, with KL penalty against a snapshot of the warm-start LoRA weights — same shape as the spaces_pipeline_env recipe.
+- **Feedback / scoring split.** Each task's 6 hidden test inputs are partitioned: 2 go to the *feedback slice* (revealed across turns 1 and 2 with the target's outputs and per-example scores) and 4 go to the *scoring slice* (held out, only the final-turn prompt is judged on these). Critical for avoiding the trivial "paste the answer into the prompt" exploit — the agent never sees the inputs that grade it.
+- **Memory budget.** With LoRA gradients across 24 turns of generation, naive batching OOM'd on L40S. Final config: `--gradient-checkpointing` ON, `--update-micro-batch 2`, `--max-prompt-tokens 2048`, `--max-new-tokens 384`. Trained 150 steps × 8 traj × 3 turns ≈ 3.5 hours on a single L40S.
 
-OFF wins on reward and compression by a clear margin. ON wins on accuracy by 1.6 percentage points at 30% more tokens. **The credit assignment between `<think>` tokens and the final extracted prompt is too weak for GRPO to exploit at this scale** — the gradient just doesn't flow cleanly across the thinking block. We ship OFF as the hero.
+Reproduce:
+
+```bash
+WARMSTART_ADAPTER=rishabh16196/prompt-golf-qwen-to-llama-nothink \
+PUSH_TO_HUB=your-user/your-multistep-adapter \
+  bash training/hf_job_train_multistep.sh
+```
+
+The first multi-step attempt errored on memory before any signal came back (job `69ed86f9`). The second (`69ed9634`) ran clean. **The single biggest lesson:** warm-starting from the hero turned a "rediscover everything from zero" 1000-step problem into a "refine the hero across turns" 150-step problem. Don't cold-start multi-turn agents.
 
 ---
 
@@ -347,6 +354,28 @@ Three things mattered in practice if you want to reproduce the run cleanly:
 
 ---
 
+## Prior work — the lineage we sit on top of
+
+This work isn't novel in any single dimension; it's a deliberate combination of four research lines that haven't been put in the same env before.
+
+**Machine Theory of Mind.** The conceptual ancestor is Rabinowitz et al.'s [ToMnet (2018)](https://arxiv.org/abs/1802.07740) — train one network to predict another agent's behavior from observed interactions, with no access to its internals. Same shape: black-box modeling of one model by another, learned from outputs alone. We swap their gridworld for natural-language tasks and their predictor for a generative agent that *acts on* its model rather than just predicting from it.
+
+**LLM-on-LLM red teaming.** Perez et al.'s [Red Teaming Language Models with Language Models (2022)](https://arxiv.org/abs/2202.03286) is the direct algorithmic ancestor: an LLM generates inputs to elicit specific behaviors (jailbreaks) from a frozen target LLM, with RL closing the loop on success. Prompt Golf is the same machinery pointed at a constructive rubric — *task success* and *length* instead of *adversarial reward*. Switch the rubric and the same env runs red-teaming.
+
+**Capability elicitation.** Greenblatt et al.'s [Stress-Testing Capability Elicitation With Password-Locked Models (2024)](https://arxiv.org/abs/2405.19550) frames the question we care about: *given a target model, what's the minimum input that surfaces a latent capability?* They build password-locked models and measure how much access (fine-tuning, few-shot, prompts) is needed to unlock them. Prompt Golf operationalizes the prompt-only side of that question as a learnable RL objective with a length budget, on tasks where the capability is open rather than locked.
+
+**Prompt optimization, classical.** The algorithmic toolkit is well-trodden:
+- **AutoPrompt** ([Shin et al., 2020](https://arxiv.org/abs/2010.15980)) — gradient-search over discrete tokens to elicit knowledge.
+- **GCG** ([Zou et al., 2023](https://arxiv.org/abs/2307.15043)) — coordinate-descent prompt optimization for jailbreaks; established that white-box gradient-based search produces compact behavioral attacks.
+- **RLPrompt** ([Deng et al., 2022](https://arxiv.org/abs/2205.12548)) — RL-trained policy for soft/hard prompt search; the closest direct ancestor in algorithm shape.
+- **PCRL** ([Choo et al., 2023](https://arxiv.org/abs/2308.08758)) — preference-conditioned RL for prompt optimization.
+
+What we add to that toolkit is the *framing* (Machine ToM, cross-family, "minimum elicitation as capability metric") and the *infrastructure* (a reusable OpenEnv with 90 graded tasks, 21 scorers, a length-budget rubric, and a frozen-target wrapper that swaps in any HF model).
+
+We're not the first to compress prompts with RL. We're trying to be the first place where you can *go to do this experiment* — fork the env, swap in your target, run it, get a number.
+
+---
+
 ## Try it yourself
 
 There's a [live Gradio demo](https://huggingface.co/spaces/rishabh16196/prompt-golf-demo) where you pick a task, see the verbose human prompt and the trained agent's compressed prompt side by side, and run either against the same Llama-3.2-3B target on real test inputs. Every screenshot in this post is from that demo — pick any task, edit the input, hit "Run target with all three prompts," and see for yourself.
@@ -408,14 +437,7 @@ That's the whole point. Both points, actually.
 
 ## Acknowledgments & lineage
 
-This work draws on four converging research lines:
-
-- **[Machine Theory of Mind](https://arxiv.org/abs/1802.07740)** (Rabinowitz et al., 2018) — the conceptual ancestor.
-- **[Red Teaming Language Models with Language Models](https://arxiv.org/abs/2202.03286)** (Perez et al., 2022) — the direct algorithmic ancestor.
-- **[Stress-Testing Capability Elicitation With Password-Locked Models](https://arxiv.org/abs/2405.19550)** (Greenblatt et al., 2024) — the motivation for treating minimum elicitation as a meaningful capability metric.
-- **[AutoPrompt](https://arxiv.org/abs/2010.15980)**, **[GCG](https://arxiv.org/abs/2307.15043)**, **[RLPrompt](https://arxiv.org/abs/2205.12548)**, **[PCRL](https://arxiv.org/abs/2308.08758)** — the algorithmic toolkit.
-
-Built for the [OpenEnv Hackathon](https://pytorch.org/event/openenv-ai-hackathon/) (Meta + Hugging Face + PyTorch, India 2026), using TRL GRPO and HuggingFace Jobs.
+Built for the [OpenEnv Hackathon](https://pytorch.org/event/openenv-ai-hackathon/) (Meta + Hugging Face + PyTorch, India 2026), using TRL GRPO and HuggingFace Jobs. The full lineage is in the [Prior Work](#prior-work--the-lineage-we-sit-on-top-of) section above.
 
 ```bibtex
 @misc{promptgolf2026,

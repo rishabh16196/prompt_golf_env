@@ -158,6 +158,21 @@ The scorer is fixed per task and never seen by the agent — the agent has to in
 
 ---
 
+## Prior work
+
+This env stands on four research lines:
+
+| Line | Paper | What we use |
+|---|---|---|
+| **Machine Theory of Mind** | [Rabinowitz et al., 2018](https://arxiv.org/abs/1802.07740) (ToMnet) | Conceptual frame: one model learns to model another from observed outputs alone, no internals access. |
+| **LLM-on-LLM red teaming** | [Perez et al., 2022](https://arxiv.org/abs/2202.03286) | Direct algorithmic ancestor — same RL-on-LLM-prompts loop. We swap adversarial reward for task-success + length. |
+| **Capability elicitation** | [Greenblatt et al., 2024](https://arxiv.org/abs/2405.19550) (password-locked models) | "Minimum input that surfaces a latent capability" as a measurable RL objective. |
+| **Prompt optimization** | [AutoPrompt](https://arxiv.org/abs/2010.15980) · [GCG](https://arxiv.org/abs/2307.15043) · [RLPrompt](https://arxiv.org/abs/2205.12548) · [PCRL](https://arxiv.org/abs/2308.08758) | Algorithmic toolkit (gradient-search over discrete tokens, RL-trained policies for prompt search). |
+
+We're not the first to compress prompts with RL. We're trying to be the first place where you can *go to do this experiment* — fork the env, swap in your target, run it, get a number.
+
+---
+
 ## Quick start
 
 ```python
