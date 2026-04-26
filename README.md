@@ -33,20 +33,17 @@ A Qwen3-1.7B agent (trained via TRL GRPO) learns to write **35-token prompts** t
 | [`prompt-golf-qwen-to-llama-nothink`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink) | Qwen→Llama, thinking=OFF (**hero**) | adapter + plots + train_metrics + base/trained eval JSONLs + demo CSV |
 | [`prompt-golf-qwen-to-llama`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama) | Qwen→Llama, thinking=ON | same artifacts (A/B variant) |
 | [`prompt-golf-grpo-1.5b`](https://huggingface.co/rishabh16196/prompt-golf-grpo-1.5b) | Qwen→Qwen same-family (control) | same artifacts |
-| [`prompt-golf-multistep-llama`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama) | Qwen→Llama multi-turn | trajectory-level GRPO adapter |
-| [`prompt-golf-llama-self`](https://huggingface.co/rishabh16196/prompt-golf-llama-self) | Llama→Llama self-improvement | adapter where Llama writes prompts for itself |
 
 ### Training pipeline ([`training/`](https://github.com/rishabh16196/prompt_golf_env/tree/main/training))
 
 | File | Role |
 |---|---|
 | [`training/train_grpo.py`](./training/train_grpo.py) | TRL GRPO single-step trainer |
-| [`training/train_grpo_multistep.py`](./training/train_grpo_multistep.py) | hand-rolled trajectory-level GRPO (multi-turn) |
 | [`training/eval_before_after.py`](./training/eval_before_after.py) | base + trained-adapter eval harness |
 | [`training/profile_baseline.py`](./training/profile_baseline.py) | per-task target-capability profiler |
 | [`training/build_before_after_csv.py`](./training/build_before_after_csv.py) | merge eval JSONLs into the demo CSV |
 | [`training/replay_to_trackio.py`](./training/replay_to_trackio.py) | post-hoc replay of `train_metrics.jsonl` into the Trackio dashboard Space |
-| [`training/hf_job_train.sh`](./training/hf_job_train.sh) / [`hf_job_train_multistep.sh`](./training/hf_job_train_multistep.sh) / [`hf_job_eval.sh`](./training/hf_job_eval.sh) / [`hf_job_profile.sh`](./training/hf_job_profile.sh) | HuggingFace Jobs launchers |
+| [`training/hf_job_train.sh`](./training/hf_job_train.sh) / [`hf_job_eval.sh`](./training/hf_job_eval.sh) / [`hf_job_profile.sh`](./training/hf_job_profile.sh) | HuggingFace Jobs launchers |
 
 ---
 
@@ -159,7 +156,7 @@ prompt_golf_env/
   Dockerfile                           # HF Spaces image
   server/
     app.py                             # FastAPI app
-    prompt_golf_environment.py         # core Env (single + multi-turn)
+    prompt_golf_environment.py         # core Env
     target_model.py                    # frozen-target wrapper (HF + mock)
     judge.py                           # Qwen3-8B 8-bit judge
     scorer.py                          # 21+ scorers (structural + LLM judge)

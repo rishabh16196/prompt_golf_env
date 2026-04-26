@@ -183,8 +183,6 @@ That's **37× compression** on the prompt that's most expensive to ship. The tra
 - **Thinking mode doesn't help GRPO at this scale.** Implicit credit assignment between `<think>` and final tokens is too weak for the agent to exploit. Don't pay for the slowdown unless you have stronger trainer signal.
 - **Cross-family is harder, but better.** Same-family (Qwen→Qwen) gives you a self-distillation problem; cross-family forces the agent to learn target-specific quirks. Llama-3.2-3B turned out to be far more cooperative on strict-format tasks than Qwen3-1.7B (67/87 solvable vs 19/87 with verbose prompts), which moved the dial dramatically on what training could even *attempt*.
 - **Profile before you train.** Running the target on the verbose description of every task ahead of time tells you the headroom: tasks where `description_baseline ≈ 0` will produce zero gradient (no group variance in GRPO) and just dilute the budget.
-- **Multi-turn is a research hop, not a single sprint.** TRL's `GRPOTrainer` is single-step by design. Multi-turn requires a hand-rolled trajectory-level GRPO loop (we wrote one mirroring the recipe from the [Spaces Pipeline env](https://huggingface.co/spaces/rishabh16196/spaces_pipeline_env)). It works, but the training cost scales with `turn_limit`. Worth it only when you have evidence the policy is bottlenecked by single-turn information.
-
 ---
 
 ## Try it yourself
@@ -214,9 +212,7 @@ PUSH_TO_HUB=your-user/your-repo bash training/hf_job_train.sh
 
 ## What's next
 
-We have the trajectory-level GRPO trainer working but haven't yet trained a multi-turn cross-family adapter at scale — that's the next experiment. The hypothesis: when the agent can see its own prompt's outputs across 2-3 turns, it should be able to *debug* its prompt instead of writing it cold. Whether that beats single-turn at equal compute is the open question.
-
-Other directions we'd love community help on:
+Directions we'd love community help on:
 
 - **More targets.** Right now we have Qwen3-1.7B and Llama-3.2-3B profiled. Phi-3, Mistral, Gemma 2 — what does the per-target prompt look like? Is the trained agent's prompt portable?
 - **Larger task banks.** 90 hand-crafted tasks is a starting point. Procedural task generation (e.g. random regex format constraints) would scale this dramatically.
