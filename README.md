@@ -21,6 +21,7 @@ A Qwen3-1.7B agent (trained via TRL GRPO) learns to write **35-token prompts** t
 
 - 🌍 **Env (this Space):** https://huggingface.co/spaces/rishabh16196/prompt_golf_env
 - 🎛️ **Live demo (Gradio):** https://huggingface.co/spaces/rishabh16196/prompt-golf-demo
+- 📊 **Training dashboard (Trackio):** https://huggingface.co/spaces/rishabh16196/prompt-golf-trackio
 - 🐙 **GitHub mirror:** https://github.com/rishabh16196/prompt_golf_env
 - 📝 **Blog post:** [`BLOG_POST.md`](./BLOG_POST.md)
 - 📓 **Colab training notebook:** [`notebooks/prompt_golf_train_minimal.ipynb`](./notebooks/prompt_golf_train_minimal.ipynb)
@@ -44,6 +45,7 @@ A Qwen3-1.7B agent (trained via TRL GRPO) learns to write **35-token prompts** t
 | [`training/eval_before_after.py`](./training/eval_before_after.py) | base + trained-adapter eval harness |
 | [`training/profile_baseline.py`](./training/profile_baseline.py) | per-task target-capability profiler |
 | [`training/build_before_after_csv.py`](./training/build_before_after_csv.py) | merge eval JSONLs into the demo CSV |
+| [`training/replay_to_trackio.py`](./training/replay_to_trackio.py) | post-hoc replay of `train_metrics.jsonl` into the Trackio dashboard Space |
 | [`training/hf_job_train.sh`](./training/hf_job_train.sh) / [`hf_job_train_multistep.sh`](./training/hf_job_train_multistep.sh) / [`hf_job_eval.sh`](./training/hf_job_eval.sh) / [`hf_job_profile.sh`](./training/hf_job_profile.sh) | HuggingFace Jobs launchers |
 
 ---
