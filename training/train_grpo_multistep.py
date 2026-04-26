@@ -235,11 +235,27 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--beta", type=float, default=0.04,
                    help="KL penalty vs frozen LoRA snapshot.")
     p.add_argument("--temperature", type=float, default=0.9)
-    p.add_argument("--max-new-tokens", type=int, default=768)
-    p.add_argument("--max-prompt-tokens", type=int, default=4096)
+    p.add_argument("--max-new-tokens", type=int, default=384,
+                   help="Per-turn agent generation cap. Trim from 768 to "
+                        "halve forward+backward memory. Bump back if "
+                        "thinking-mode answers get truncated.")
+    p.add_argument("--max-prompt-tokens", type=int, default=2048,
+                   help="Trim from 4096 — turn-3 prompts with "
+                        "prior_attempts can hit 3-5k tokens; truncating "
+                        "to 2k drops the longest prior turn first.")
     p.add_argument("--max-grad-norm", type=float, default=0.5)
-    p.add_argument("--update-micro-batch", type=int, default=4,
-                   help="Records per batched forward pass.")
+    p.add_argument("--update-micro-batch", type=int, default=2,
+                   help="Records per batched forward pass. 2 halves "
+                        "activation memory vs the default 4.")
+    p.add_argument("--gradient-checkpointing", action="store_true",
+                   default=True,
+                   help="Recompute forward activations during backward "
+                        "instead of caching. ~80%% activation memory "
+                        "saving at ~30%% extra compute. Default ON for "
+                        "multi-step because trajectory rollouts blow up "
+                        "activation memory.")
+    p.add_argument("--no-gradient-checkpointing",
+                   dest="gradient_checkpointing", action="store_false")
     p.add_argument("--save-every", type=int, default=50)
 
     # LoRA (used when --sft-adapter is not given — fresh LoRA init)
@@ -330,6 +346,26 @@ def main() -> None:
     model = model.to(device) if not torch.cuda.is_available() else model
     n_tr = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"  trainable params: {n_tr:,}", flush=True)
+
+    # ---- Gradient checkpointing (default ON for multi-step) ----
+    # Saves ~80% activation memory at ~30% extra compute. Critical for
+    # multi-step because trajectory rollouts (B × G × turn_limit records)
+    # blow up activation memory during the backward pass.
+    if args.gradient_checkpointing:
+        # PEFT models need use_reentrant=False on modern PyTorch
+        try:
+            model.gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs={"use_reentrant": False}
+            )
+        except TypeError:
+            # Older transformers/peft don't take the kwarg
+            model.gradient_checkpointing_enable()
+        # PEFT requires inputs to require grad when checkpointing the base
+        if hasattr(model, "enable_input_require_grads"):
+            model.enable_input_require_grads()
+        print("  gradient_checkpointing: ENABLED", flush=True)
+    else:
+        print("  gradient_checkpointing: disabled", flush=True)
 
     # ---- Snapshot trainable weights as the KL reference ----
     print("Snapshotting trainable weights as KL reference...", flush=True)

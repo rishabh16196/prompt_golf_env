@@ -25,6 +25,11 @@ SFT_ADAPTER="${SFT_ADAPTER:-}"   # optional warmstart from a single-step adapter
 MAX_STEPS="${MAX_STEPS:-200}"
 NUM_GENS="${NUM_GENS:-4}"
 BATCH_SIZE="${BATCH_SIZE:-2}"
+# Memory-aware defaults — multi-turn prompts grow with prior_attempts
+# (turn 3 can hit 3-5k tokens), so tighter caps + grad checkpointing.
+MAX_PROMPT_TOKENS="${MAX_PROMPT_TOKENS:-2048}"
+MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-384}"
+UPDATE_MICRO_BATCH="${UPDATE_MICRO_BATCH:-2}"
 LR="${LR:-3e-6}"
 BETA="${BETA:-0.04}"
 TURN_LIMIT="${TURN_LIMIT:-3}"
@@ -88,6 +93,9 @@ python -u training/train_grpo_multistep.py \\
   --max-steps ${MAX_STEPS} \\
   --num-gens ${NUM_GENS} \\
   --batch-size ${BATCH_SIZE} \\
+  --max-prompt-tokens ${MAX_PROMPT_TOKENS} \\
+  --max-new-tokens ${MAX_NEW_TOKENS} \\
+  --update-micro-batch ${UPDATE_MICRO_BATCH} \\
   --lr ${LR} \\
   --beta ${BETA} \\
   --output-dir /app/outputs/grpo_multistep \\
