@@ -69,7 +69,7 @@ Key flags (override via env vars in the launcher script):
 `training/train_grpo_multistep.py` — hand-rolled trajectory-level GRPO. TRL's GRPO can't do multi-turn credit assignment cleanly (it expects one prompt → one scalar reward), so this is a separate trainer.
 
 ```bash
-WARMSTART_ADAPTER=your-username/your-hero-adapter \
+SFT_ADAPTER=your-username/your-hero-adapter \
 PUSH_TO_HUB=your-username/your-multistep-adapter \
 TARGET_MODEL=meta-llama/Llama-3.2-3B-Instruct \
   bash training/hf_job_train_multistep.sh
@@ -122,10 +122,11 @@ Each job is ≈15 min on L40S. Output rows include `task_id`, `category`, `agent
 
 ```bash
 python training/build_before_after_csv.py \
-  --base-jsonl   evals/eval_base.jsonl \
+  --base-jsonl    evals/eval_base.jsonl \
   --trained-jsonl evals/eval_trained.jsonl \
-  --out evals/qwen_to_llama_demo.csv \
+  --output-csv    evals/qwen_to_llama_demo.csv \
   --min-verbose-accuracy 0.0   # set to >0 to drop dead-target tasks
+  # Optional: --push-to-hub your-name/your-adapter-repo to upload directly.
 ```
 
 Then upload the CSV to the adapter repo so the demo Space can fetch it:
@@ -142,7 +143,7 @@ hf upload $ADAPTER_REPO evals/qwen_to_llama_demo.csv evals/qwen_to_llama_demo.cs
 
 ```bash
 python training/make_plots.py \
-  --metrics-jsonl train_metrics.jsonl \
+  --metrics train_metrics.jsonl \
   --out-dir plots/
 ```
 
@@ -183,11 +184,14 @@ PUSH_TO_HUB=your-name/prompt-golf-hero \
 ADAPTER_REPO=your-name/prompt-golf-hero \
   bash training/hf_job_eval.sh both                    # 2 × ≈15min
 
-# 4) build demo CSV (pulls eval JSONLs from the repo, joins verbose prompts)
+# 4) build demo CSV
+#    First pull the JSONLs locally, then merge them.
+hf download your-name/prompt-golf-hero --include "evals/*.jsonl" --local-dir .
 python training/build_before_after_csv.py \
-  --base-jsonl   <(hf download your-name/prompt-golf-hero evals/eval_base.jsonl    --local-dir - 2>/dev/null) \
-  --trained-jsonl <(hf download your-name/prompt-golf-hero evals/eval_trained.jsonl --local-dir - 2>/dev/null) \
-  --out qwen_to_llama_demo.csv
+  --base-jsonl    evals/eval_base.jsonl \
+  --trained-jsonl evals/eval_trained.jsonl \
+  --output-csv    evals/qwen_to_llama_demo.csv \
+  --push-to-hub   your-name/prompt-golf-hero
 
 # 5) (optional) Trackio replay
 python training/replay_to_trackio.py
@@ -196,7 +200,7 @@ python training/replay_to_trackio.py
 For the multi-step variant, swap step 2:
 
 ```bash
-WARMSTART_ADAPTER=your-name/prompt-golf-hero \
+SFT_ADAPTER=your-name/prompt-golf-hero \
 PUSH_TO_HUB=your-name/prompt-golf-multistep \
   bash training/hf_job_train_multistep.sh              # ≈3.5h
 # then promote adapter_final/ to repo root before eval (see §3)
