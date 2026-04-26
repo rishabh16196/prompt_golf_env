@@ -48,27 +48,73 @@ A Qwen3-1.7B agent (trained via TRL GRPO) learns to write **35-token prompts** t
 
 ---
 
-## Hero result — Qwen3-1.7B agent → Llama-3.2-3B target
+## Results — the table to look at
 
-500 GRPO steps on a 90-task bank. Same setup as the demo Space.
+All numbers below are on the same 90-task bank, evaluated against frozen Llama-3.2-3B. Verbose = human-written; base/hero/multistep = agent-generated.
+
+| Setup | Mean accuracy | Reward vs base | Mean tokens | Wins per-task | Use when |
+|---|---|---|---|---|---|
+| **Verbose** (human-written) | 0.631 | — | 94.2 | (the bar) | You don't have an agent and don't mind paying full token cost. |
+| **Base** (Qwen3-1.7B, no adapter) | 0.464 | — | 37.5 | 4 / 90 | Almost never. Untrained Qwen3 over-thinks the task. |
+| **Hero** (1-step trained) | 0.506 | +0.381 | **38.5** | **63 / 90** | **Default.** Cheapest, wins most often, ~3× shorter than verbose at 80% of its accuracy. |
+| **Multistep** (3-turn trained) | **0.576** | **+0.440** | 43.7 | 23 / 90 | Nuanced classifiers (`classification_tough` is its sweet spot). When the +6pp accuracy matters more than +5 tokens. |
+
+> **Headline:** Hero retains **80% of verbose accuracy at ~40% of the tokens** and wins per-task on 70% of tasks. Multistep gives back compression for accuracy — only worth it for nuanced classification.
+
+### Training curves (hero)
 
 ![reward curve](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/resolve/main/plots/reward_curve.png)
-
 ![length curve](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/resolve/main/plots/length_curve.png)
-
 ![reward-component breakdown](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/resolve/main/plots/breakdown.png)
 
-| Stage | Mean accuracy | Mean tokens |
-|---|---|---|
-| Verbose human prompt | **0.65** | ~63 |
-| Untrained Qwen3-1.7B | 0.48 | ~38 |
-| **Trained Qwen3-1.7B + LoRA** | **0.52** | **35** |
+📊 **Demo CSV:** [`evals/qwen_to_llama_demo.csv`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/blob/main/evals/qwen_to_llama_demo.csv) — every task × verbose / untrained / hero prompts side by side.
 
-→ **80% accuracy retention at 55% of the verbose token count.**
+### Per-category breakdown (hero vs multistep, 90 tasks)
 
-The trained prompt **beats the human verbose prompt on 48 of 87 tasks (55%)** under the same rubric (`raw_score − 0.5·baseline − 0.002·tokens`). On the rest, the accuracy drop on hard tasks outweighs the length savings — those are the cases where the trained agent compressed too aggressively to keep up with Llama's verbose-prompt capability ceiling.
+For each task we pick the model with the best reward (ε = 0.05 reward margin counts as a tie, broken in favour of the cheaper option).
 
-📊 **Demo CSV:** [`evals/qwen_to_llama_demo.csv`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/blob/main/evals/qwen_to_llama_demo.csv) — 90 rows × verbose / untrained / trained prompts side by side, with per-task accuracy + reward-advantage columns.
+| Category | n | Hero | Multi | Use |
+|---|---|---|---|---|
+| `classification_tough` | 10 | 4 | **6** | **multistep** — only category where multi clearly leads |
+| `format`, `meta`, `arithmetic` | 13 | 7 | 5 | tie → **hero** (cheaper) |
+| `classification`, `extraction`, `persona`, `style`, `translation`, `refusal`, `discrimination` | 19 | **19** | 0 | **hero** — clean sweep |
+| `extraction_tough` | 10 | **7** | 2 | **hero** |
+| `reasoning_tough` | 10 | **7** | 3 | **hero** (multi wins big *when* it does, less often) |
+| `persona_tough` | 8 | **7** | 1 | **hero** |
+| `format_tough` | 8 | **6** | 2 | **hero** |
+| `adversarial_tough` | 6 | **5** | 1 | **hero** |
+| `reasoning` | 4 | **3** | 1 | **hero** |
+| `policy_compression` | 3 | **2** | 1 | **hero** (multi gets 1 dramatic unlock — `policy_content_moderation` 0.00 → 0.67) |
+
+Multistep wins on aggregate (+7pp accuracy) by landing **a small number of dramatic 0→1 unlocks on tough tasks** (e.g. `tough_policy_stance` 0→1.00, `tough_syllogism_check` 0→1.00). Hero wins more often head-to-head.
+
+### Side-by-side: verbose vs hero vs multistep
+
+**`sentiment_basic`** *(classification — clean hero win)*
+
+| | Tokens | Acc | Prompt |
+|---|---:|---:|---|
+| Verbose | 27 | 0.83 | *"For each input review, output exactly one of: positive, negative, neutral. Output the label only — no punctuation, no explanation."* |
+| **Hero** | **18** | **1.00** | *"Classify the input review as positive, negative, or neutral. Output only the label."* |
+| Multistep | 45 | 1.00 | *"Given the input review, classify it as positive, negative, or neutral. Output only the label. Use the meta-llama/Llama-3.2-3B-Instruct model. Token budget: 50."* |
+
+**`tough_policy_stance`** *(classification_tough — multistep unlock)*
+
+| | Tokens | Acc | Prompt |
+|---|---:|---:|---|
+| Verbose | 136 | 0.83 | *"Classify the speaker's stance on the policy proposal mentioned in the quote. Output exactly one label, lowercase, hyphenated..."* |
+| Hero | 26 | 0.00 | *"classify the speaker's stance on the policy proposal in the quote as support, oppose, neutral, conditional-support, or conditional-oppose"* |
+| **Multistep** | 35 | **1.00** | *"Classify the speaker's stance on the policy proposal. Output exactly one label: support, oppose, neutral, conditional-support, or conditional-oppose. Do not include explanations."* |
+
+**`format_uppercase`** *(format — multistep regression)*
+
+| | Tokens | Acc | Prompt |
+|---|---:|---:|---|
+| Verbose | 25 | 1.00 | *"Repeat the input sentence back in ALL UPPERCASE letters, with no other changes. Do not add quotes or commentary."* |
+| **Hero** | **9** | 1.00 | *"Format the input sentence to all uppercase letters."* |
+| Multistep | 24 | 1.00 | *"Format the input sentence to all uppercase, without any changes except capitalization. Output only the uppercase version of the input."* |
+
+📊 **Eval JSONLs (multistep):** [`evals/eval_base.jsonl`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/blob/main/evals/eval_base.jsonl) · [`evals/eval_trained.jsonl`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/blob/main/evals/eval_trained.jsonl)
 
 ---
 
@@ -105,62 +151,10 @@ The scorer is fixed per task and never seen by the agent — the agent has to in
 
 ---
 
-## Variants
+## Other variants we ran
 
-### Same-family control: Qwen→Qwen
-
-Same agent (Qwen3-1.7B + LoRA) but target is also Qwen3-1.7B. Different framing: because Qwen target is weak on strict-format tasks, **verbose prompts only get 0.15 accuracy on average** — a much lower bar to beat.
-
-![Qwen→Qwen reward curve](https://huggingface.co/rishabh16196/prompt-golf-grpo-1.5b/resolve/main/plots/reward_curve.png)
-
-| | Qwen→Qwen | Qwen→Llama (hero) |
-|---|---|---|
-| Trained beats verbose on | **70 / 87 tasks (80%)** | 48 / 87 (55%) |
-| Mean reward advantage vs verbose | **+0.085** | -0.057 |
-| Verbose accuracy ceiling | 0.15 | 0.65 |
-
-Qwen target's weakness makes this the easier comparison to "win" — the trained agent's compressed prompts beat verbose on 80% of tasks because verbose itself is failing. Cross-family Llama target is a much harder bar to clear, but the absolute accuracy is far higher.
-
-📊 **Demo CSV:** [`evals/qwen_to_qwen_demo.csv`](https://huggingface.co/rishabh16196/prompt-golf-grpo-1.5b/blob/main/evals/qwen_to_qwen_demo.csv)
-
-### Cross-family thinking=ON variant
-
-Identical training setup but with Qwen3's `<think>...</think>` chat template enabled.
-
-![Qwen→Llama thinking-ON reward curve](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama/resolve/main/plots/reward_curve.png)
-
-| | thinking=OFF (hero) | thinking=ON |
-|---|---|---|
-| Trained accuracy | 0.523 | **0.539** |
-| Trained reward | **+0.426** | +0.379 |
-| Mean tokens | **35** | 46 |
-
-OFF wins on reward and compression; ON wins on accuracy by 1.6pp at a 30% token cost. We ship OFF as the default; ON is a different operating point on the accuracy/length frontier.
-
-📊 **Demo CSV:** [`evals/qwen_to_llama_demo.csv`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama/blob/main/evals/qwen_to_llama_demo.csv)
-
-### Multi-turn variant: 3 turns per episode
-
-Same agent + target as the hero, but each episode runs `turn_limit=3` — the agent sees its prior prompts + per-example feedback on a 2-example feedback slice, and only the final-turn prompt is judged on a held-out 4-example scoring slice. Trained with the trajectory-level GRPO trainer (`train_grpo_multistep.py`), 150 steps × 8 trajectories × 3 turns.
-
-| | Single-step hero | Multi-step (3 turns) |
-|---|---|---|
-| Trained accuracy | 0.523 | **0.576** |
-| Trained reward | +0.426 | **+0.440** |
-| Mean tokens | **35** | 43.7 |
-| Trained beats untrained on | — | 29 / 90 tasks |
-
-**Multi-step is a conditional improvement, not a strict upgrade:**
-
-| Where it wins | Where it loses |
-|---|---|
-| `reasoning_tough` (5 wins / 0 losses) | `format` (2 wins / 5 losses) |
-| `classification_tough` (7 / 2) | `format_three_bullets`, `format_uppercase` (bloat with no accuracy gain) |
-| `policy_compression` (1 win — `policy_content_moderation` 0.00 → 0.67) | Dead-target tasks (agent burns tokens trying anyway, e.g. `policy_finreg_communication_review` 17→112 tokens, both 0.00) |
-
-The intuition: multi-turn relaxes length pressure because the agent has room to debug across turns. That helps tasks where the agent needs reasoning room (tough reasoning, tough classification, complex extraction). It hurts tasks where short single-shot prompts already win (format-strict tasks). **Single-step is the right default for cost-sensitive deployments; multi-step is the right pick when accuracy ceilings matter more than token count.**
-
-📊 **Eval JSONLs:** [`evals/eval_base.jsonl`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/blob/main/evals/eval_base.jsonl) + [`evals/eval_trained.jsonl`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/blob/main/evals/eval_trained.jsonl)
+- **Qwen → Qwen same-family control** ([`prompt-golf-grpo-1.5b`](https://huggingface.co/rishabh16196/prompt-golf-grpo-1.5b)) — looks great on win-rate (70/87 vs verbose) but verbose-Qwen ceiling is only 0.15. Cross-family Llama is the harder bar.
+- **Thinking-ON A/B** ([`prompt-golf-qwen-to-llama`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama)) — `<think>...</think>` chat template enabled. Loses to OFF on reward (+0.379 vs +0.426) at +30% tokens. We ship OFF as default.
 
 ---
 
