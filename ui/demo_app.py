@@ -47,17 +47,31 @@ DEFAULTS = {
     "target_model": os.environ.get(
         "DEMO_TARGET_MODEL", "meta-llama/Llama-3.2-3B-Instruct"
     ),
+    # Agent model the trained adapter is built on.
+    "agent_model": os.environ.get(
+        "DEMO_AGENT_MODEL", "Qwen/Qwen3-1.7B"
+    ),
+    # Trained LoRA adapter (HF repo or local path). If empty, the
+    # "regenerate live" feature stays disabled.
+    "agent_adapter": os.environ.get(
+        "DEMO_AGENT_ADAPTER",
+        "rishabh16196/prompt-golf-qwen-to-llama-nothink",
+    ),
     # CSV produced by training/build_before_after_csv.py
     "demo_csv": os.environ.get(
-        "DEMO_CSV", str(_REPO_ROOT / "outputs" / "qwen_to_qwen_demo.csv")
+        "DEMO_CSV",
+        str(_REPO_ROOT / "outputs" / "qwen_to_llama_demo.csv"),
     ),
     # If the CSV isn't local, you can pull it from the hub:
     "fallback_csv_url": (
-        "https://huggingface.co/rishabh16196/prompt-golf-grpo-1.5b/"
-        "resolve/main/evals/qwen_to_qwen_demo.csv"
+        "https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/"
+        "resolve/main/evals/qwen_to_llama_demo.csv"
     ),
-    "max_new_tokens": 64,
+    "max_new_tokens": 64,           # target output cap
+    "agent_max_new_tokens": 256,    # agent generation cap (no thinking)
     "temperature": 0.0,
+    # Match the chat template used when the adapter was trained.
+    "enable_thinking": False,
 }
 
 
@@ -104,6 +118,11 @@ _TOK = None
 _MODEL = None
 _DEVICE = None
 
+# --- Agent (untrained base + trained-adapter) singletons ---
+_AGENT_TOK = None
+_AGENT_BASE = None     # raw Qwen3-1.7B
+_AGENT_TRAINED = None  # PeftModel(Qwen3-1.7B, LoRA)
+
 
 def _device() -> str:
     if torch.cuda.is_available():
@@ -141,6 +160,24 @@ def load_target() -> None:
           flush=True)
 
 
+def _build_target_chat(prompt: str, test_input: str) -> str:
+    """Apply the target's chat template: prompt as system, test_input as user.
+
+    Chat-tuned targets (Llama-3.2-3B-Instruct, Qwen3-1.7B chat, etc.)
+    will ramble in completion mode if you feed them raw text — they try
+    to continue the few-shot pattern in the prompt instead of answering.
+    """
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": test_input},
+    ]
+    if getattr(_TOK, "chat_template", None):
+        return _TOK.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True,
+        )
+    return f"{prompt}\n\n{test_input}\n\nAssistant:"
+
+
 @torch.inference_mode()
 def run_target_batch(prompts: List[str], test_input: str) -> List[str]:
     """Run the target on (prompt[i] + test_input) for all i, in one batched
@@ -150,12 +187,11 @@ def run_target_batch(prompts: List[str], test_input: str) -> List[str]:
     incurring inference cost.
     """
     load_target()
-    # Build the full prompts; track which positions are non-empty.
     full_texts = []
     keep_idx = []
     for i, p in enumerate(prompts):
         if p and p.strip():
-            full_texts.append(f"{p}\n\n{test_input}".strip())
+            full_texts.append(_build_target_chat(p, test_input))
             keep_idx.append(i)
     if not full_texts:
         return ["" for _ in prompts]
@@ -195,6 +231,140 @@ def run_target(prompt: str, test_input: str) -> str:
 def count_tokens(text: str) -> int:
     load_target()
     return len(_TOK.encode(text or "", add_special_tokens=False))
+
+
+# ---------------------------------------------------------------------------
+# Agent loader (lazy — only loaded if the user clicks "Regenerate live")
+# ---------------------------------------------------------------------------
+
+def load_agents() -> bool:
+    """Load Qwen3-1.7B base + LoRA-adapted variant. Returns True on success."""
+    global _AGENT_TOK, _AGENT_BASE, _AGENT_TRAINED
+    if _AGENT_TRAINED is not None:
+        return True
+    if not DEFAULTS.get("agent_adapter"):
+        return False
+    name = DEFAULTS["agent_model"]
+    adapter = DEFAULTS["agent_adapter"]
+    print(f"[demo] loading agent {name} + adapter {adapter}...", flush=True)
+    t0 = time.time()
+    _AGENT_TOK = AutoTokenizer.from_pretrained(name)
+    _AGENT_TOK.padding_side = "left"
+    if _AGENT_TOK.pad_token is None:
+        _AGENT_TOK.pad_token = _AGENT_TOK.eos_token
+    dev = _device()
+    dtype = torch.bfloat16 if dev in ("cuda", "mps") else torch.float32
+    _AGENT_BASE = AutoModelForCausalLM.from_pretrained(
+        name, torch_dtype=dtype,
+        device_map="auto" if dev == "cuda" else None,
+    )
+    if dev != "cuda":
+        _AGENT_BASE = _AGENT_BASE.to(dev)
+    _AGENT_BASE.eval()
+
+    from peft import PeftModel
+    # Load adapter on TOP of a SECOND copy of the base (so we keep the raw
+    # base for "untrained" generations).
+    base_for_adapter = AutoModelForCausalLM.from_pretrained(
+        name, torch_dtype=dtype,
+        device_map="auto" if dev == "cuda" else None,
+    )
+    if dev != "cuda":
+        base_for_adapter = base_for_adapter.to(dev)
+    _AGENT_TRAINED = PeftModel.from_pretrained(base_for_adapter, adapter)
+    _AGENT_TRAINED.eval()
+    print(f"[demo] agents loaded in {time.time()-t0:.1f}s", flush=True)
+    return True
+
+
+def _build_synthetic_obs(task_id: str):
+    """Look up task spec from the bank and return an obs-like SimpleNamespace
+    that build_agent_user_message can format."""
+    from types import SimpleNamespace
+    from prompt_golf_env.server.tasks import TASKS
+    from prompt_golf_env.server.tasks_v2 import TASKS_V2
+    from prompt_golf_env.server.tasks_tough import TASKS_TOUGH
+    from prompt_golf_env.server.tasks_policy import TASKS_POLICY
+    bank = {**TASKS, **TASKS_V2, **TASKS_TOUGH, **TASKS_POLICY}
+    spec = bank.get(task_id)
+    if spec is None:
+        return None
+    # Use first 3 train_examples as the visible block (matches env default)
+    train_ex = [
+        {"input": x, "expected": y} for (x, y) in spec.train_examples[:3]
+    ]
+    return SimpleNamespace(
+        task_id=task_id,
+        task_category=spec.category,
+        task_description=spec.description,
+        target_model_id=DEFAULTS["target_model"],
+        prompt_budget_tokens=spec.budget_tokens,
+        baseline_zero_shot_score=0.0,  # unknown without env.reset
+        train_examples=train_ex,
+        prior_attempts=[],
+    )
+
+
+@torch.inference_mode()
+def _agent_generate(model, tok, chat_str: str, max_new_tokens: int) -> str:
+    enc = tok(chat_str, return_tensors="pt").to(_device())
+    out = model.generate(
+        **enc,
+        max_new_tokens=max_new_tokens,
+        do_sample=False,
+        temperature=1.0,
+        pad_token_id=tok.pad_token_id,
+    )
+    new_ids = out[0][enc["input_ids"].shape[1]:]
+    return tok.decode(new_ids, skip_special_tokens=True).strip()
+
+
+def regenerate_live(label_with_tag: str):
+    """For the currently-selected task, ask both agents to write a fresh
+    prompt. Returns (base_prompt, trained_prompt, status_msg).
+    """
+    if not label_with_tag:
+        return "", "", "(no task selected)"
+    if not load_agents():
+        return "", "", ("agent loading disabled — set DEMO_AGENT_ADAPTER "
+                        "env var to enable live regeneration")
+
+    # Lazy import — these live in the training/ subdir
+    from training.train_grpo import (
+        build_chat_prompt, extract_prompt,
+    )
+
+    tid = label_with_tag.split()[0]
+    obs = _build_synthetic_obs(tid)
+    if obs is None:
+        return "", "", f"unknown task: {tid}"
+
+    chat_str = build_chat_prompt(
+        _AGENT_TOK, obs,
+        enable_thinking=DEFAULTS["enable_thinking"],
+    )
+
+    t0 = time.time()
+    raw_base = _agent_generate(
+        _AGENT_BASE, _AGENT_TOK, chat_str,
+        max_new_tokens=DEFAULTS["agent_max_new_tokens"],
+    )
+    t1 = time.time()
+    raw_trained = _agent_generate(
+        _AGENT_TRAINED, _AGENT_TOK, chat_str,
+        max_new_tokens=DEFAULTS["agent_max_new_tokens"],
+    )
+    t2 = time.time()
+
+    base_prompt = extract_prompt(raw_base)
+    trained_prompt = extract_prompt(raw_trained)
+    msg = (
+        f"agents regenerated in {t2-t0:.1f}s "
+        f"(base {t1-t0:.1f}s, trained {t2-t1:.1f}s)  |  "
+        f"base: {count_tokens(base_prompt)} tok, "
+        f"trained: {count_tokens(trained_prompt)} tok"
+    )
+    return base_prompt, trained_prompt, msg
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +505,15 @@ def build_app() -> gr.Blocks:
                          "should be applied to."),
         )
 
-        run_btn = gr.Button("Run target with all three prompts", variant="primary")
+        with gr.Row():
+            regen_btn = gr.Button(
+                "Regenerate prompts live (loads agent + LoRA on first click)",
+                variant="secondary",
+            )
+            run_btn = gr.Button(
+                "Run target with all three prompts", variant="primary"
+            )
+        regen_status = gr.Textbox(label="agent status", interactive=False)
 
         with gr.Row():
             with gr.Column():
@@ -366,6 +544,11 @@ def build_app() -> gr.Blocks:
             v_tok, b_tok, t_tok, v_acc, b_acc, t_acc, test_input,
         ]
         task_dd.change(select_task, inputs=[task_dd], outputs=select_outputs)
+        regen_btn.click(
+            regenerate_live,
+            inputs=[task_dd],
+            outputs=[base_box, trained_box, regen_status],
+        )
         run_btn.click(
             generate_three,
             inputs=[verbose_box, base_box, trained_box, test_input],

@@ -132,6 +132,24 @@ def load_target() -> None:
           flush=True)
 
 
+def _build_target_chat(prompt: str, test_input: str) -> str:
+    """Apply the target's chat template: prompt as system, test_input as user.
+
+    Llama-3.2-3B-Instruct (and any chat-tuned target) needs this — feeding
+    raw `prompt\\n\\ntest_input` makes it ramble in completion mode.
+    """
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": test_input},
+    ]
+    if getattr(_TOK, "chat_template", None):
+        return _TOK.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True,
+        )
+    # Fallback for non-chat tokenizers
+    return f"{prompt}\n\n{test_input}\n\nAssistant:"
+
+
 @torch.inference_mode()
 def run_target_batch(prompts: List[str], test_input: str) -> List[str]:
     load_target()
@@ -139,7 +157,7 @@ def run_target_batch(prompts: List[str], test_input: str) -> List[str]:
     keep_idx = []
     for i, p in enumerate(prompts):
         if p and p.strip():
-            full_texts.append(f"{p}\n\n{test_input}".strip())
+            full_texts.append(_build_target_chat(p, test_input))
             keep_idx.append(i)
     if not full_texts:
         return ["" for _ in prompts]
