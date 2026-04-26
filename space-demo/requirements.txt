@@ -1,9 +1,11 @@
 torch>=2.1
-transformers>=4.45
+transformers>=4.45,<5.0
 peft>=0.13
 accelerate>=0.34
-huggingface_hub>=0.26
-gradio>=4.40
+# huggingface_hub 1.x removed HfFolder; gradio still imports it. Pin <1.0
+# until both ecosystems converge.
+huggingface_hub>=0.26,<1.0
+gradio>=4.40,<5.0
 sentencepiece
 # Python 3.13 removed audioop from stdlib; pydub (pulled by gradio)
 # imports it. audioop-lts is the maintained drop-in replacement.
