@@ -80,6 +80,14 @@ All numbers below are on the same 90-task bank, evaluated against frozen Llama-3
 
 📊 **Demo CSV:** [`evals/qwen_to_llama_demo.csv`](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/blob/main/evals/qwen_to_llama_demo.csv) — every task × verbose / untrained / hero prompts side by side.
 
+### Training curves (multistep)
+
+![multistep reward curve](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/resolve/main/plots/reward_curve.png)
+![multistep length curve](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/resolve/main/plots/length_curve.png)
+![multistep breakdown](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/resolve/main/plots/breakdown.png)
+
+150 steps × 8 trajectories × 3 turns. Warm-started from the hero adapter, so reward starts at +0.58 and climbs to +0.89 by the final step. KL stays under 0.03 against the warm-start LoRA snapshot.
+
 ### Per-category breakdown (hero vs multistep, 90 tasks)
 
 For each task we pick the model with the best reward (ε = 0.05 reward margin counts as a tie, broken in favour of the cheaper option).

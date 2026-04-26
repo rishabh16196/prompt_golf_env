@@ -252,6 +252,14 @@ Everything below is on the same 90-task bank, frozen Llama-3.2-3B target, determ
 
 *Reward climbs from \~0 to +0.43 over 500 steps; mean prompt length finds its compression frontier within \~150 steps; the length penalty stays small because the agent quickly stops paying it. Step-by-step metrics live in the [Trackio dashboard](https://huggingface.co/spaces/rishabh16196/prompt-golf-trackio).*
 
+### Training curves (multistep)
+
+![Multistep reward curve](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/resolve/main/plots/reward_curve.png)
+![Multistep length curve](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/resolve/main/plots/length_curve.png)
+![Multistep breakdown](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/resolve/main/plots/breakdown.png)
+
+*150 steps, warm-started from the hero adapter — so reward starts at +0.58 (single-turn baseline) and climbs to +0.89 by the final step. Mean prompt tokens float in the 30–55 range as the agent uses turn 2/3 budget on tasks where extra reasoning helps. KL stays under 0.03 against the warm-start LoRA snapshot. The 1989-line metrics file is at [`metrics/train_metrics_multistep.json`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama/blob/main/metrics/train_metrics_multistep.json).*
+
 ### Per-category breakdown — hero vs multistep
 
 For each task we pick the model with the best reward (ε = 0.05 reward margin counts as a tie, broken in favour of the cheaper option). 90 tasks across 19 categories:
