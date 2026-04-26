@@ -13,8 +13,6 @@ We trained an LLM to be a prompt engineer for *another LLM*.
 
 The setup: a Qwen3-1.7B **agent** (LoRA-fine-tuned via TRL GRPO) writes prompts. A frozen Llama-3.2-3B **target** runs them. The reward is task success minus prompt length. After 500 GRPO steps on a 90-task bank, the agent compresses verbose human-written prompts (mean ~63 tokens, up to 737 on long-context policy tasks) into **35-token** prompts that retain **80% of the verbose accuracy** and **beat the human prompt outright on 48 of 87 tasks (55%)**.
 
-Peak compression: **37×** on long-context policy tasks — a 737-token MSN ad-creative policy compressed to a 20-token classifier prompt.
-
 Everything is open: the OpenEnv environment, three trained adapters, a live Gradio demo where you can play prompts against the same target, a Trackio dashboard with the full training trajectory, and a reproducible HuggingFace Jobs pipeline.
 
 > 🌍 **[Environment Space](https://huggingface.co/spaces/rishabh16196/prompt_golf_env)**
@@ -25,10 +23,13 @@ Everything is open: the OpenEnv environment, three trained adapters, a live Grad
 
 <!-- IMAGE PLACEHOLDER 1 — Hero
      A side-by-side panel:
-       LEFT  : 737-token MSN ad-creative policy (truncated with "...")
-       RIGHT : 20-token trained-agent compression
-       Bottom badge: "37× compression"
-     This is the strongest single visual you have. Lead with it. -->
+       LEFT  : a verbose human-written prompt (e.g. sentiment_basic
+               at 27 tokens, or tough_yaml_nested_depth at 74 tokens)
+       RIGHT : the trained-agent compressed equivalent that scores at
+               or above the verbose accuracy
+       Bottom: "trained 1.0 vs verbose 0.83 on sentiment_basic"
+       (or similar — pick a row from the demo CSV where trained
+        actually beats verbose). -->
 
 ---
 
@@ -39,7 +40,7 @@ Everything is open: the OpenEnv environment, three trained adapters, a live Grad
 | **The capability we're testing** | Can one LLM learn to write the minimum prompt that elicits a specific behavior from a frozen target LLM? |
 | **The environment** | Single-step RL. Agent writes a prompt → frozen target runs it on 6 hidden test inputs → reward = task_success − 0.5·baseline − 0.002·tokens − leakage². |
 | **The recipe** | Qwen3-1.7B (LoRA, r=16) ⟶ Llama-3.2-3B-Instruct (frozen). 500 GRPO steps on a 90-task bank. ~3h on a single L40S. |
-| **The result** | 35-token prompts → 80% of verbose accuracy. Wins on 55% of tasks. 37× peak compression on long-context policy tasks. |
+| **The result** | 35-token prompts → 80% of verbose accuracy on Llama-3.2-3B. Trained prompt beats the human verbose prompt outright on 48 of 87 tasks (55%) under the same rubric. |
 | **Why care** | First OpenEnv environment for cross-model prompt-writing as a learnable skill. Plugs straight into red-teaming, prompt distillation, capability elicitation. |
 
 ---
@@ -267,9 +268,6 @@ The full row-by-row demo CSV is at **[`evals/qwen_to_llama_demo.csv`](https://hu
 | `tough_yaml_nested_depth` | 74 tok / 0.96 | **20 tok** / **1.00** | 3.7× compression, accuracy improved |
 | `json_key_ordering` | 47 tok / 0.61 | **38 tok** / **0.78** | Shorter AND +17pp accuracy |
 | `tough_fallacy_classify` | 164 tok / 0.00 | **59 tok** / **0.33** | Trained agent added the label vocabulary the verbose prompt forgot |
-| `policy_msn_ad_creative` | **737 tok** / 0.00 | **20 tok** / 0.00 | 37× compression — both fail because Llama-3.2-3B can't reason over the policy hierarchy, but the compression doesn't *cost* anything |
-
-The `policy_msn_ad_creative` row is the most interesting. Both prompts get 0 accuracy, so it looks like a draw — but the verbose prompt was charging 737 tokens of prefill on every request to deliver that 0. The trained agent does it for 20. **Pair the compressed prompt with a stronger target and you'd ship the same behavior at 37× lower input-token cost.**
 
 ### What the agent actually wrote
 
@@ -285,11 +283,11 @@ For YAML extraction with strict nesting:
 >
 > *Trained agent:* "Generate a YAML document that meets the specified minimum nesting depth and includes all entities from the given specification." (20 tokens, **1.00 accuracy**)
 
-For policy compliance — the long-context money case:
+For JSON extraction with explicit key ordering:
 
-> *Verbose:* 737 tokens of MSN ad-creative policy listing prohibited content, restricted categories, format standards, decision schemas.
+> *Verbose:* 47 tokens describing required keys, exact ordering, default-sort overrides, output-only constraints.
 >
-> *Trained agent:* "Classify the input creative as allow, disallow, or review based on the given policy guidelines." (20 tokens)
+> *Trained agent:* "Given the input, output a JSON object with keys in the exact order specified. Ignore default sorting." (38 tokens, **0.78 accuracy** vs verbose 0.61 — shorter AND more accurate)
 
 ### The same-family control: Qwen → Qwen
 
@@ -409,7 +407,7 @@ async with PromptGolfEnv(base_url="http://localhost:8000") as env:
 
 | If you work on… | Prompt Golf gives you… |
 |---|---|
-| **Inference cost in production** | A trained policy that compresses verbose prompts behaviorally — no gradient access to the target needed. Up to 37× compression on real-world policy prompts. |
+| **Inference cost in production** | A trained policy that compresses verbose prompts behaviorally — no gradient access to the target needed. ~40% mean reduction in input tokens at 80% accuracy retention; per-task savings up to ~5× on tasks where verbose decoration was non-load-bearing. |
 | **Capability evaluation** | A black-box minimum-elicitation metric per task per target. Decouples *can the model do X* from *did we find the right prompt*. |
 | **Prompt distillation across targets** | Cross-family training generates a model of the target's response surface. Swap targets, retrain, ship a custom prompt-compressor for your specific deployment. |
 | **Capability elicitation research** | A black-box analog of password-locked-model elicitation ([Greenblatt et al., 2024](https://arxiv.org/abs/2405.19550)). What's the minimum input that surfaces a latent capability? |
@@ -466,5 +464,5 @@ Built for the [OpenEnv Hackathon](https://pytorch.org/event/openenv-ai-hackathon
        (a) a wordcloud of the actual short prompts the agent
            discovered, sized by frequency across the bank, or
        (b) a clean trophy/golf-ball graphic with the headline
-           number "37×" in the foreground.
+           pair "35 tokens · 80% retention" in the foreground.
      Optional. The post lands fine without it. -->
