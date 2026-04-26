@@ -1,0 +1,7 @@
+torch>=2.1
+transformers>=4.45
+peft>=0.13
+accelerate>=0.34
+huggingface_hub>=0.26
+gradio>=4.40
+sentencepiece
