@@ -30,7 +30,7 @@ import csv
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent
@@ -152,6 +152,31 @@ def main() -> None:
             for inp, _exp in (spec.test_examples or [])[:3]:
                 sample_inputs.append(inp)
 
+        # --- HEADLINE deltas vs the VERBOSE human-written prompt ---
+        # These are the numbers we lead with in the demo: "did the
+        # trained agent beat the human's verbose prompt at the rubric?"
+        accuracy_delta_v = (
+            None if verbose_accuracy is None or trained_accuracy is None
+            else round(trained_accuracy - verbose_accuracy, 4)
+        )
+        # Reward advantage approximation:
+        #   trained_reward includes the env's per-task baseline subtraction,
+        #   leakage term, and length cost. To compare against "verbose as
+        #   a prompt" without re-running the env, we use the same rubric
+        #   weights (LAMBDA_LEN=0.002) and assume leakage=0 (verbose
+        #   description doesn't contain held-out test n-grams). The
+        #   per-task baseline cancels out since both agent and verbose
+        #   would face the same baseline subtraction.
+        reward_advantage_v: Optional[float] = None
+        if (verbose_accuracy is not None and trained_accuracy is not None
+                and verbose_tokens and trained_tokens is not None):
+            LAMBDA_LEN = 0.002
+            reward_advantage_v = round(
+                (trained_accuracy - verbose_accuracy)
+                - LAMBDA_LEN * (trained_tokens - verbose_tokens),
+                4,
+            )
+
         rows_out.append({
             "task_id": tid,
             "category": spec.category if spec else "",
@@ -171,15 +196,18 @@ def main() -> None:
             "trained_accuracy": trained_accuracy,
             # --- SAMPLE TEST INPUTS (for UI demo) ---
             "sample_test_inputs": json.dumps(sample_inputs),
-            # --- REWARD (rubric-composed) ---
+            # --- REWARD (rubric-composed, env-scored) ---
             "base_reward": base_reward,
             "trained_reward": trained_reward,
-            # --- HEADLINE DELTAS ---
+            # --- HEADLINE DELTAS vs VERBOSE (lead numbers) ---
             "compression_ratio_trained_vs_verbose": compression_ratio,
             "accuracy_retention_trained_vs_verbose": (
                 None if not verbose_accuracy or trained_accuracy is None
                 else round(trained_accuracy / verbose_accuracy, 3)
             ),
+            "accuracy_delta_trained_vs_verbose": accuracy_delta_v,
+            "reward_advantage_trained_vs_verbose": reward_advantage_v,
+            # --- TRAINING-EFFECT delta (vs untrained) — research metric ---
             "reward_delta_trained_minus_base": reward_delta,
         })
 
@@ -226,6 +254,17 @@ def main() -> None:
             retention = avg_t / avg_v if avg_v > 0 else float('nan')
             print(f"[csv] accuracy retention (trained / verbose): {retention:.2%}",
                   flush=True)
+            adv_rows = [r for r in valid
+                        if r["reward_advantage_trained_vs_verbose"] is not None]
+            if adv_rows:
+                avg_adv = sum(r["reward_advantage_trained_vs_verbose"]
+                              for r in adv_rows) / len(adv_rows)
+                n_pos = sum(1 for r in adv_rows
+                            if r["reward_advantage_trained_vs_verbose"] > 0)
+                print(f"[csv] reward advantage trained vs verbose: "
+                      f"mean={avg_adv:+.3f}  "
+                      f"trained-beats-verbose-on={n_pos}/{len(adv_rows)} tasks",
+                      flush=True)
         print(f"[csv] avg compression (trained / verbose): {avg_compress:.2%}",
               flush=True)
     else:
