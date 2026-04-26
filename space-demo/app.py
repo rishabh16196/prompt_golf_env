@@ -76,15 +76,29 @@ def load_demo_rows() -> List[Dict]:
     with urllib.request.urlopen(req) as r:
         text = r.read().decode("utf-8")
     rows = list(csv.DictReader(io.StringIO(text)))
+    n_total = len(rows)
 
-    def _delta(r: Dict) -> float:
+    def _f(r: Dict, k: str) -> float:
         try:
-            return float(r.get("reward_delta_trained_minus_base") or 0)
+            return float(r.get(k) or 0)
         except ValueError:
             return 0.0
 
-    rows.sort(key=_delta, reverse=True)
-    print(f"[demo] loaded {len(rows)} rows", flush=True)
+    # Filter out tasks that are dead on this target — both the human
+    # verbose prompt AND the trained agent's prompt score 0. Those are
+    # tasks where the target genuinely can't do the task regardless of
+    # prompt, and they just clutter the demo UI dropdown.
+    def _alive(r: Dict) -> bool:
+        return (_f(r, "verbose_accuracy") > 0
+                or _f(r, "trained_accuracy") > 0
+                or _f(r, "trained_reward") > 0)
+
+    rows = [r for r in rows if _alive(r)]
+
+    # Sort by trained reward (desc) — most interesting tasks first
+    rows.sort(key=lambda r: _f(r, "trained_reward"), reverse=True)
+    print(f"[demo] loaded {len(rows)}/{n_total} rows "
+          f"(filtered out tasks dead on this target)", flush=True)
     return rows
 
 
