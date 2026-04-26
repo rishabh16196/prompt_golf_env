@@ -13,9 +13,14 @@ tags:
 
 # Prompt Golf
 
-> An RL environment where the agent's *action* is a prompt and the *reward* is how well that prompt steers a frozen target LLM — divided by how long the prompt is.
+> **Can one LLM learn to whisper to another?**
+> An OpenEnv RL environment where the agent's *action* is a prompt and the *reward* is how well that prompt steers a *frozen, different-family* target LLM to do the right thing — minus how long the prompt is.
 
-A Qwen3-1.7B agent (trained via TRL GRPO) learns to write **35-token prompts** that get a frozen Llama-3.2-3B target to **80% of the accuracy** of human-written 250-token prompts.
+**The result.** A Qwen3-1.7B agent (LoRA + TRL GRPO, ~3h on a single L40S) learns to write **~39-token prompts** that retain **80% of the accuracy** of ~94-token human-written prompts on a frozen Llama-3.2-3B target — *cross-family, black-box, learned from outputs alone, no gradient access*. On **63/90 (70%) of tasks the agent's compressed prompt is the best of the three** we evaluated (verbose, untrained agent, trained agent) — cheaper *and* equal-or-better reward. [▶ Try the live demo](https://huggingface.co/spaces/rishabh16196/prompt-golf-demo) · [📝 Read the blog](./BLOG_POST.md)
+
+**Why this matters.** Production LLM systems prepend 1000-token policies to every classification call (creative compliance, content moderation, regulated-comm review). Today the only way to compress them is for a human prompt engineer to iterate by hand. If one LLM can build a behavioral model of another LLM accurately enough — the same way humans model each other — **the LLM can find the minimum policy itself.** Train once, ship the compressor, save 30× per call. Same env generalizes to red-teaming (swap the rubric), capability elicitation (swap the target), and prompt distillation (swap the bank).
+
+**What's in this repo:** a reusable OpenEnv environment, a 90-task bank with 21 scorers, four trained-adapter releases with full eval data, a training pipeline reproducible on HuggingFace Jobs, a live Gradio demo, and a Trackio dashboard with replayed training metrics — all linked below.
 
 ## Links
 
