@@ -17,11 +17,12 @@ COPY . /app
 # are skipped here because we default to mock. If you need the HF target
 # backend on the Space, override CMD or bake a different image.
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir "openenv-core[core]>=0.2.2" uvicorn fastapi pydantic && \
+    pip install --no-cache-dir "openenv-core[core]>=0.2.2" uvicorn fastapi pydantic gradio && \
     pip install --no-cache-dir --no-deps -e .
 
 ENV PYTHONUNBUFFERED=1 \
     PROMPT_GOLF_TARGET_BACKEND=mock \
+    ENABLE_WEB_INTERFACE=true \
     HOST=0.0.0.0 \
     PORT=8000
 
