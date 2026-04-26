@@ -491,6 +491,13 @@ def compress_and_run(description: str, budget_str: str, test_input: str):
     trained_tok = count_tokens(trained_prompt)
     verbose_tok = count_tokens(description)
 
+    # Build the exact chat-templated strings the target actually sees,
+    # so the user can read what we send to Llama. Empty test_input
+    # still produces a valid string (just an empty user turn).
+    load_target()
+    verbose_chat = _build_target_chat(description, test_input or "")
+    trained_chat = _build_target_chat(trained_prompt, test_input or "")
+
     if test_input:
         # One batched forward pass with both prompts.
         outs = run_target_batch([description, trained_prompt], test_input)
@@ -506,7 +513,8 @@ def compress_and_run(description: str, budget_str: str, test_input: str):
                f"verbose: {verbose_tok} tok  →  trained: {trained_tok} tok")
 
     return (trained_prompt, str(trained_tok), str(verbose_tok),
-            verbose_output, trained_output, msg)
+            verbose_output, trained_output,
+            verbose_chat, trained_chat, msg)
 
 
 # ---------------------------------------------------------------------------
@@ -668,6 +676,30 @@ def build_app() -> gr.Blocks:
                         )
                 custom_status = gr.Textbox(label="status", interactive=False)
 
+                with gr.Accordion(
+                    "🔍 Exact chat-templated string sent to the target "
+                    "(the full Llama API call)",
+                    open=False,
+                ):
+                    gr.Markdown(
+                        "Each prompt becomes a `system` message and the "
+                        "test input a `user` message; we apply the target "
+                        "tokenizer's chat template (`apply_chat_template`) "
+                        "with `add_generation_prompt=True`. Below is the "
+                        "exact text fed to Llama for each side."
+                    )
+                    with gr.Row():
+                        custom_verbose_chat = gr.Textbox(
+                            label="Verbose call",
+                            lines=10, interactive=False,
+                            show_copy_button=True,
+                        )
+                        custom_trained_chat = gr.Textbox(
+                            label="Trained call",
+                            lines=10, interactive=False,
+                            show_copy_button=True,
+                        )
+
         gr.Markdown(
             "---\n"
             "**About**: this is the demo artifact for "
@@ -703,7 +735,9 @@ def build_app() -> gr.Blocks:
             compress_and_run,
             inputs=[custom_desc, custom_budget, custom_input],
             outputs=[custom_prompt_out, custom_tok, custom_verbose_tok,
-                     custom_verbose_out, custom_target_out, custom_status],
+                     custom_verbose_out, custom_target_out,
+                     custom_verbose_chat, custom_trained_chat,
+                     custom_status],
         )
         app.load(select_task, inputs=[task_dd], outputs=select_outputs)
 
