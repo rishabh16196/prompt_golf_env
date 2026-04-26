@@ -173,8 +173,6 @@ Task quality is the single biggest determinant of whether this kind of environme
 
 Each task ships 3 visible train examples + 6 hidden test examples + a per-task token budget (60–250).
 
-The **policy tasks are the headline workload**: each has a 500–700-word real-world-style policy as the verbose prompt, and the agent has to compress it into a ≤250-token classifier prompt that still routes inputs to the right `allow / disallow / review` decision. That's where the inference-cost story is most visible — these are prompts that look like real production system prompts.
-
 <!-- IMAGE 2 — A second worked example from the demo
      Use: Image 3 (sentiment_nuanced) — best mid-tier example
      Caption emphasizes: trained drops the explanatory 'mixed' clause but keeps the labels. -->
