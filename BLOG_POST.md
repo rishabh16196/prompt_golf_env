@@ -7,7 +7,11 @@ authors:
 
 # Prompt Golf
 
-> *80% of human-written-prompt accuracy at ~40% of the tokens — learned by an RL agent that never saw the target's weights, only its outputs.*
+> *Production LLM systems waste billions of tokens a day prepending verbose policies that mostly aren't load-bearing. The only way to find out which words actually matter is for a human to iterate by hand — slow, target-specific, and gone the moment the policy changes.*
+>
+> *So we trained a 1.7B Qwen agent to do that work. It writes prompts for a frozen 3B Llama target it never saw the weights of, learning from the target's outputs alone — the way humans model each other. After 500 RL steps, it produces \~39-token prompts that retain **80% of 94-token human-prompt accuracy** and **win head-to-head on 63 of 90 tasks (70%)**.*
+>
+> *No gradient access. No shared tokenizer. Just outputs, watched long enough.*
 
 ## How this started
 
@@ -50,7 +54,7 @@ The research question and the ad-tech problem are the same problem from differen
 
 We trained a Qwen3-1.7B **agent** (LoRA + TRL GRPO) to write prompts for a frozen Llama-3.2-3B **target**. Different families on purpose: the agent has no gradient access, no shared tokenizer affordance, no architectural shortcut. Just the same view a human prompt engineer has — *I can see what the target does, I can't see why it does it.*
 
-After 500 GRPO steps on a 90-task bank, the agent compresses verbose human-written prompts (mean ~94 tokens, up to 737 on long-context policy tasks) into **~39-token prompts** that retain **80% of the verbose accuracy**. On a per-task basis, the trained agent's prompt is **the best of three options on 63 of 90 tasks (70%)** — *cheaper and equal-or-better reward* than both the verbose human prompt and the untrained agent. Peak compression: **30× on long-context policy tasks**.
+After 500 GRPO steps on a 90-task bank, the agent compresses verbose human-written prompts (mean \~94 tokens, up to 737 on long-context policy tasks) into **\~39-token prompts** that retain **80% of the verbose accuracy**. On a per-task basis, the trained agent's prompt is **the best of three options on 63 of 90 tasks (70%)** — *cheaper and equal-or-better reward* than both the verbose human prompt and the untrained agent. Peak compression: **30× on long-context policy tasks**.
 
 Everything is open: [the env](https://huggingface.co/spaces/rishabh16196/prompt_golf_env), the [trained adapter](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink), the [training pipeline](https://github.com/rishabh16196/prompt_golf_env/tree/main/training), and a [live Gradio demo](https://huggingface.co/spaces/rishabh16196/prompt-golf-demo) where you can play prompts against the same target the agent was trained on. The [demo CSV](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/blob/main/evals/qwen_to_llama_demo.csv) has all 90 tasks × verbose / untrained / trained / accuracy side by side.
 
@@ -58,9 +62,31 @@ Everything is open: [the env](https://huggingface.co/spaces/rishabh16196/prompt_
 |---|---|
 | **The capability we're testing** | Can one LLM learn to write the minimum prompt that elicits a specific behavior from a frozen target LLM? |
 | **The environment** | Single-step RL. Agent writes a prompt → frozen target runs it on 6 hidden test inputs → reward = task_success − 0.5·baseline − 0.002·tokens − leakage². |
-| **The recipe** | Qwen3-1.7B (LoRA, r=16) ⟶ Llama-3.2-3B-Instruct (frozen). 500 GRPO steps on a 90-task bank. ~3h on a single L40S. |
-| **The result** | ~39-token prompts → 80% of verbose accuracy. Best of three on 70% of tasks. |
+| **The recipe** | Qwen3-1.7B (LoRA, r=16) ⟶ Llama-3.2-3B-Instruct (frozen). 500 GRPO steps on a 90-task bank. \~3h on a single L40S. |
+| **The result** | \~39-token prompts → 80% of verbose accuracy. Best of three on 70% of tasks. |
 | **Why care** | First OpenEnv environment for cross-model prompt-writing as a learnable skill. Plugs straight into red-teaming, prompt distillation, capability elicitation. |
+
+---
+
+## Prior work — the lineage we sit on top of
+
+This work isn't novel in any single dimension; it's a deliberate combination of four research lines that haven't been put in the same env before.
+
+**Machine Theory of Mind.** The conceptual ancestor is Rabinowitz et al.'s [ToMnet (2018)](https://arxiv.org/abs/1802.07740) — train one network to predict another agent's behavior from observed interactions, with no access to its internals. Same shape: black-box modeling of one model by another, learned from outputs alone. We swap their gridworld for natural-language tasks and their predictor for a generative agent that *acts on* its model rather than just predicting from it.
+
+**LLM-on-LLM red teaming.** Perez et al.'s [Red Teaming Language Models with Language Models (2022)](https://arxiv.org/abs/2202.03286) is the direct algorithmic ancestor: an LLM generates inputs to elicit specific behaviors (jailbreaks) from a frozen target LLM, with RL closing the loop on success. Prompt Golf is the same machinery pointed at a constructive rubric — *task success* and *length* instead of *adversarial reward*. Switch the rubric and the same env runs red-teaming.
+
+**Capability elicitation.** Greenblatt et al.'s [Stress-Testing Capability Elicitation With Password-Locked Models (2024)](https://arxiv.org/abs/2405.19550) frames the question we care about: *given a target model, what's the minimum input that surfaces a latent capability?* They build password-locked models and measure how much access (fine-tuning, few-shot, prompts) is needed to unlock them. Prompt Golf operationalizes the prompt-only side of that question as a learnable RL objective with a length budget, on tasks where the capability is open rather than locked.
+
+**Prompt optimization, classical.** The algorithmic toolkit is well-trodden:
+- **AutoPrompt** ([Shin et al., 2020](https://arxiv.org/abs/2010.15980)) — gradient-search over discrete tokens to elicit knowledge.
+- **GCG** ([Zou et al., 2023](https://arxiv.org/abs/2307.15043)) — coordinate-descent prompt optimization for jailbreaks; established that white-box gradient-based search produces compact behavioral attacks.
+- **RLPrompt** ([Deng et al., 2022](https://arxiv.org/abs/2205.12548)) — RL-trained policy for soft/hard prompt search; the closest direct ancestor in algorithm shape.
+- **PCRL** ([Choo et al., 2023](https://arxiv.org/abs/2308.08758)) — preference-conditioned RL for prompt optimization.
+
+What we add to that toolkit is the *framing* (Machine ToM, cross-family, "minimum elicitation as capability metric") and the *infrastructure* (a reusable OpenEnv with 90 graded tasks, 21 scorers, a length-budget rubric, and a frozen-target wrapper that swaps in any HF model).
+
+We're not the first to compress prompts with RL. We're trying to be the first place where you can *go to do this experiment* — fork the env, swap in your target, run it, get a number.
 
 ---
 
@@ -70,7 +96,7 @@ One episode = one task = one prompt. Single-turn, conceptually simple:
 
 1. The env hands the agent a **task description** (verbose, hand-written), 3 visible **train examples**, and a **token budget**.
 2. The agent's action is a **prompt string** (typically wrapped in `<prompt>...</prompt>`).
-3. The env prepends that prompt to ~6 *hidden* test inputs, runs the **frozen target LLM** on each, scores the outputs.
+3. The env prepends that prompt to \~6 *hidden* test inputs, runs the **frozen target LLM** on each, scores the outputs.
 4. Reward = `raw_task_score − 0.5·baseline − 0.002·tokens − leakage_overlap²`, clipped.
 
 The held-out test inputs are **never shown to the agent**. An n-gram leakage detector zeros the reward if the agent tries to paste held-out content into its prompt.
@@ -169,7 +195,7 @@ The recipe:
 - **Target**: `meta-llama/Llama-3.2-3B-Instruct` (frozen)
 - **Judge**: Qwen3-8B in 8-bit via `bitsandbytes` for fuzzy scorers
 - **GRPO**: 500 steps, `num_generations=8`, `lr=5e-6`, `β=0.04`, `temperature=0.9`
-- **Hardware**: single L40S (48 GB) on HuggingFace Jobs, ~3 hours per run
+- **Hardware**: single L40S (48 GB) on HuggingFace Jobs, \~3 hours per run
 - **Anti-collapse**: `MIN_TOKENS_FLOOR=5` rubric penalty
 
 Reproduce with:
@@ -211,10 +237,10 @@ Everything below is on the same 90-task bank, frozen Llama-3.2-3B target, determ
 |---|---|---|---|---|---|
 | **Verbose** (human-written) | 0.631 | — | 94.2 | (the bar) | You don't have an agent and don't mind paying full token cost. |
 | **Base** (Qwen3-1.7B, no adapter) | 0.464 | — | 37.5 | 4 / 90 | Almost never. Untrained Qwen3 over-thinks the task. |
-| **Hero** (1-step trained) | 0.506 | +0.381 | **38.5** | **63 / 90** | **Default.** Cheapest, wins most often, ~3× shorter than verbose at 80% of its accuracy. |
+| **Hero** (1-step trained) | 0.506 | +0.381 | **38.5** | **63 / 90** | **Default.** Cheapest, wins most often, \~3× shorter than verbose at 80% of its accuracy. |
 | **Multistep** (3-turn trained) | **0.576** | **+0.440** | 43.7 | 23 / 90 | Nuanced classifiers (`classification_tough` is its sweet spot — sentiment-mixed, stance, fallacy, bias, framing). When you need an extra +6pp accuracy and can pay +5 tokens. |
 
-→ **Hero retains 80% of verbose accuracy at ~40% of the tokens.** Multistep retains 91% of verbose accuracy at ~46% of the tokens — gives back compression for accuracy.
+→ **Hero retains 80% of verbose accuracy at \~40% of the tokens.** Multistep retains 91% of verbose accuracy at \~46% of the tokens — gives back compression for accuracy.
 
 **The honest read:** multistep wins on aggregate accuracy by landing **a small number of dramatic 0→1 unlocks on tough tasks**, not by improving uniformly. On 70% of tasks per-task, hero is best (cheaper *and* equal-or-better reward). Multi only clearly leads on `classification_tough`. Use the table above as your decision rule.
 
@@ -224,7 +250,7 @@ Everything below is on the same 90-task bank, frozen Llama-3.2-3B target, determ
 ![Mean prompt length over 500 GRPO steps](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/resolve/main/plots/length_curve.png)
 ![Reward component breakdown](https://huggingface.co/rishabh16196/prompt-golf-qwen-to-llama-nothink/resolve/main/plots/breakdown.png)
 
-*Reward climbs from ~0 to +0.43 over 500 steps; mean prompt length finds its compression frontier within ~150 steps; the length penalty stays small because the agent quickly stops paying it. Step-by-step metrics live in the [Trackio dashboard](https://huggingface.co/spaces/rishabh16196/prompt-golf-trackio).*
+*Reward climbs from \~0 to +0.43 over 500 steps; mean prompt length finds its compression frontier within \~150 steps; the length penalty stays small because the agent quickly stops paying it. Step-by-step metrics live in the [Trackio dashboard](https://huggingface.co/spaces/rishabh16196/prompt-golf-trackio).*
 
 ### Per-category breakdown — hero vs multistep
 
@@ -352,27 +378,7 @@ Three things mattered in practice if you want to reproduce the run cleanly:
 - ❌ **Isn't** a new prompt-optimization algorithm. The algorithmic core is RL+length; the contribution is the framing + reusable env + cross-family experiments.
 - ❌ **Isn't** a claim that we've "solved world modeling for LLMs." Episodes are short; the analogy to Dreamer/JEPA/Genie is structural, not algorithmic.
 
----
-
-## Prior work — the lineage we sit on top of
-
-This work isn't novel in any single dimension; it's a deliberate combination of four research lines that haven't been put in the same env before.
-
-**Machine Theory of Mind.** The conceptual ancestor is Rabinowitz et al.'s [ToMnet (2018)](https://arxiv.org/abs/1802.07740) — train one network to predict another agent's behavior from observed interactions, with no access to its internals. Same shape: black-box modeling of one model by another, learned from outputs alone. We swap their gridworld for natural-language tasks and their predictor for a generative agent that *acts on* its model rather than just predicting from it.
-
-**LLM-on-LLM red teaming.** Perez et al.'s [Red Teaming Language Models with Language Models (2022)](https://arxiv.org/abs/2202.03286) is the direct algorithmic ancestor: an LLM generates inputs to elicit specific behaviors (jailbreaks) from a frozen target LLM, with RL closing the loop on success. Prompt Golf is the same machinery pointed at a constructive rubric — *task success* and *length* instead of *adversarial reward*. Switch the rubric and the same env runs red-teaming.
-
-**Capability elicitation.** Greenblatt et al.'s [Stress-Testing Capability Elicitation With Password-Locked Models (2024)](https://arxiv.org/abs/2405.19550) frames the question we care about: *given a target model, what's the minimum input that surfaces a latent capability?* They build password-locked models and measure how much access (fine-tuning, few-shot, prompts) is needed to unlock them. Prompt Golf operationalizes the prompt-only side of that question as a learnable RL objective with a length budget, on tasks where the capability is open rather than locked.
-
-**Prompt optimization, classical.** The algorithmic toolkit is well-trodden:
-- **AutoPrompt** ([Shin et al., 2020](https://arxiv.org/abs/2010.15980)) — gradient-search over discrete tokens to elicit knowledge.
-- **GCG** ([Zou et al., 2023](https://arxiv.org/abs/2307.15043)) — coordinate-descent prompt optimization for jailbreaks; established that white-box gradient-based search produces compact behavioral attacks.
-- **RLPrompt** ([Deng et al., 2022](https://arxiv.org/abs/2205.12548)) — RL-trained policy for soft/hard prompt search; the closest direct ancestor in algorithm shape.
-- **PCRL** ([Choo et al., 2023](https://arxiv.org/abs/2308.08758)) — preference-conditioned RL for prompt optimization.
-
-What we add to that toolkit is the *framing* (Machine ToM, cross-family, "minimum elicitation as capability metric") and the *infrastructure* (a reusable OpenEnv with 90 graded tasks, 21 scorers, a length-budget rubric, and a frozen-target wrapper that swaps in any HF model).
-
-We're not the first to compress prompts with RL. We're trying to be the first place where you can *go to do this experiment* — fork the env, swap in your target, run it, get a number.
+(See [Prior work](#prior-work--the-lineage-we-sit-on-top-of) above for the four research lines this builds on.)
 
 ---
 
