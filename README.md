@@ -23,8 +23,8 @@ A Qwen3-1.7B agent (trained via TRL GRPO) learns to write **35-token prompts** t
 - 🎛️ **Live demo (Gradio):** https://huggingface.co/spaces/rishabh16196/prompt-golf-demo
 - 📊 **Training dashboard (Trackio):** https://huggingface.co/spaces/rishabh16196/prompt-golf-trackio
 - 🐙 **GitHub mirror:** https://github.com/rishabh16196/prompt_golf_env
+- 🛠️ **Training pipeline:** [`training/`](https://github.com/rishabh16196/prompt_golf_env/tree/main/training) — full GRPO trainers, eval harness, profilers, HF Jobs launchers
 - 📝 **Blog post:** [`BLOG_POST.md`](./BLOG_POST.md)
-- 📓 **Colab training notebook:** [`notebooks/prompt_golf_train_minimal.ipynb`](./notebooks/prompt_golf_train_minimal.ipynb)
 
 ### Trained adapters & data
 
@@ -36,7 +36,7 @@ A Qwen3-1.7B agent (trained via TRL GRPO) learns to write **35-token prompts** t
 | [`prompt-golf-multistep-llama`](https://huggingface.co/rishabh16196/prompt-golf-multistep-llama) | Qwen→Llama multi-turn | trajectory-level GRPO adapter |
 | [`prompt-golf-llama-self`](https://huggingface.co/rishabh16196/prompt-golf-llama-self) | Llama→Llama self-improvement | adapter where Llama writes prompts for itself |
 
-### Training pipeline (`training/`)
+### Training pipeline ([`training/`](https://github.com/rishabh16196/prompt_golf_env/tree/main/training))
 
 | File | Role |
 |---|---|
@@ -166,7 +166,6 @@ prompt_golf_env/
     rubrics.py                         # additive reward composition
     tasks.py / tasks_v2.py / tasks_tough.py / tasks_policy.py    # 90-task bank
   training/                            # see Links → Training pipeline
-  notebooks/                           # Colab smoke training
   ui/ + space-demo/                    # Gradio demos
   BLOG_POST.md                         # writeup
 ```
